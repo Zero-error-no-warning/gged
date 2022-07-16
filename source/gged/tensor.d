@@ -147,51 +147,34 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
 }
 
 /// def new Tensor
-struct defTensor
+struct defTensor(Type)
 {
-    template def(alias fun,ulong Idx)
+    static:
+    template byFun(alias fun,ulong Idx)
     {
-        alias tmp = def!fun;
-        alias def = tmp!Idx;
+        alias tmp = byFun!fun;
+        alias byFun = tmp!Idx;
     }
-    template def(alias fun)
+    template byFun(alias fun)
     {
-        static struct def(ulong Idx)
+        auto byFun(ulong Idx)()
         {
-            static auto opDispatch(string idx)()
+            auto newone = gged!Type(Repeat!(Idx,Idx));
+            foreach(a;newone.Serial)
             {
-                return new class
-                {
-                    static auto opBinary(string op, string Exp,X...)(TensorIndexed!(Exp,X) rhs) 
-                    {
-                        auto lhs = gged!(rhs._mul[0].TYPE)(Repeat!(Idx,idx.length));
-                        foreach(a;lhs.Serial)
-                        {
-                            lhs[a]  = mixin(genNewOpBinary(idx.length));
-                        }
-                        return  tensor(lhs).opDispatch!(idx).opBinary!(op)(rhs);
-                    }
-                    static auto opBinaryRight(string op, string Exp,X...)(TensorIndexed!(Exp,X) lhs) 
-                    {
-                        auto rhs = gged!(lhs._mul[0].TYPE)(Repeat!(Idx,idx.length));
-                        foreach(a;rhs)
-                        {
-                            rhs[a]  = mixin(genNewOpBinary(idx.length));
-                        }
-                        return  lhs.opBinary!(op)(tensor(rhs).opDispatch!(idx));
-                    }
-                };
-            }
+                newone[a]  = mixin(genNewOpBinary(Idx));
+            } 
+            return tensor(newone);
         }
     }
-
     /// Kronecker delta
-    alias δ = def!((i,j)=>(i == j ? 1 : 0));
+    alias δ = byFun!((i,j)=>(i == j ? 1 : 0));
 
     /// Levi-Civita symbol
-    alias ε = def!((long i,long j,long k)=>sgn((j-i)*(k-j)*(k-i)),3);
-}
-package(ggeD)  string genNewOpBinary(ulong i)
-{
-    return "cast(rhs._mul[0].TYPE) fun("~iota(i).map!(x=>"a["~x.to!string~"],").join.to!string~")";
+    alias ε = byFun!((long i,long j,long k)=>sgn((j-i)*(k-j)*(k-i)),3);
+    
+    package(ggeD)  string genNewOpBinary(ulong i)
+    {
+        return "cast(Type) fun("~iota(i).map!(x=>"a["~x.to!string~"],").join.to!string~")";
+    }
 }
