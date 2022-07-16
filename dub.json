@@ -4,6 +4,5 @@
 	"copyright": "Copyright (c) 2022 Zenw",
 	"description": "non-jagged array and tensor library",
 	"license": "MIT",
-    "targetType": "library",
-	"versions": ["0.0.1"]
+    "targetType": "library"
 }
