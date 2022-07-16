@@ -8,23 +8,19 @@ module ggeD.einsum;
 import ggeD;
 import std;
 
-package(ggeD)  string onlyUniq(string input)
+package(ggeD)  string onlyUniq(string input,string ignr)
 {
-    return input.to!(dchar[]).filter!(a=>input.count(a) == 1).array.to!string;
+    return input.to!(dchar[]).filter!(a=>input.count(a) == 1 || ignr.to!(dchar[]).any!(b=>a==b) ).array.to!string;
 }
 
-package(ggeD)  string onlyDup(string input)
+package(ggeD)  string onlyDup(string input,string ignr)
 {
-    return input.to!(dchar[]).filter!(a=>input.count(a) > 1).array.sort.uniq.array.to!string;
-}
-package(ggeD)  string genNewOpBinary(ulong i)
-{
-    return "cast(rhs._mul[0].TYPE) fun("~iota(i).map!(x=>"a["~x.to!string~"],").join.to!string~")";
+    return input.to!(dchar[]).filter!(a=>input.count(a) > 1 && ignr.to!(dchar[]).all!(b=>a!=b)).array.sort.uniq.array.to!string;
 }
 
 class Einsum
 {
-    static auto opBinary(string op, string Exp,X...)(lazy TensorIndexed!(Exp,X) rhs) if(op == "|")
+    static auto opBinary(string op, string Exp,string Ig,,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
     {
         auto result = rhs.eval;
         return Tensor!(TemplateArgsOf!(typeof(result))[1])(result._mul[0]);
@@ -33,7 +29,7 @@ class Einsum
 
 class BroadCast(alias f,Arg...)
 {
-    static auto opCall(string Exp,X...)(TensorIndexed!(Exp,X) tens, Arg arg)
+    static auto opCall(string Exp,string Ig,X...)(TensorIndexed!(Exp,Ig,X) tens, Arg arg)
     {
         auto newone = tens.eval();
         newone._mul[0] = newone._mul[0].dup;
@@ -57,7 +53,7 @@ package(ggeD) template myCommonType(X...)
 }
 
 
-package(ggeD)  struct TensorIndexed(string Exp,X...)
+package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
 {
     
     package(ggeD)  X _mul;
@@ -69,13 +65,12 @@ package(ggeD)  struct TensorIndexed(string Exp,X...)
         mixin(genEval);
     }
     private alias getTYPE(T) = T.TYPE;
-    
     private static string genEval()
     {
         string[] idx = Exp.split!isOp;  // 
         string ops = "*" ~ Exp.filter!isOp.array.to!string;
-        string unq = idx.join.onlyUniq;   // ijk
-        string dup = idx.join.onlyDup;   // 
+        string unq = idx.join.onlyUniq(Ignr);   // ijk
+        string dup = idx.join.onlyDup(Ignr);   // 
         alias T =  myCommonType!(staticMap!(getTYPE,X));
         string result;
         result ~= "private auto eval(){ // "~ Exp~"->"~ unq ~ "\n";
@@ -155,7 +150,7 @@ package(ggeD)  struct TensorIndexed(string Exp,X...)
                     result ~=";\n";
                 result ~= "}\n";
             result ~= "}\n";
-            result ~= "return TensorIndexed!(`"~ unq ~"`,typeof(newgged))(newgged);\n";
+            result ~= "return TensorIndexed!(`"~ unq ~"`,`"~Ignr~"`,typeof(newgged))(newgged);\n";
         result ~= "}\n";
         return result;
     }
@@ -200,12 +195,12 @@ package(ggeD)  struct TensorIndexed(string Exp,X...)
                 }
                 result~="result[idx] = lhs._mul[0][r1] "~op~" rhs._mul[0][r2];";
             result ~= "}\n";
-            result ~= "return TensorIndexed!(`"~ unq ~"`,typeof(result))(result);\n";
+            result ~= "return TensorIndexed!(`"~ unq ~"`,`"~Ignr~"`,typeof(result))(result);\n";
         return result;
     }
 
     
-    auto opBinary(string op,string Exp2,Y...)(TensorIndexed!(Exp2,Y) rhs_) if(op == "+" || op == "-")
+    auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Exp2,Ig2,Y) rhs_) if(op == "+" || op == "-")
     {
         auto lhs = this.eval();
         auto rhs = rhs_.eval();
@@ -214,9 +209,9 @@ package(ggeD)  struct TensorIndexed(string Exp,X...)
         // pragma(msg,genEvalAdd(Exp,Exp2,op));
     }
     
-    auto opBinary(string op,string Exp2,Y...)(TensorIndexed!(Exp2,Y) rhs) if(op == "*" || op == "/")
+    auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Exp2,Ig2,Y) rhs) if(op == "*" || op == "/")
     {
-        return TensorIndexed!(Exp ~op~ Exp2,AliasSeq!(X,Y))( _mul ,rhs._mul);
+        return TensorIndexed!(Exp ~op~ Exp2,(Ig1~Ig2).to!(dchar[]).sort.uniq.array.to!string,AliasSeq!(X,Y))( _mul ,rhs._mul);
     }
 
     
