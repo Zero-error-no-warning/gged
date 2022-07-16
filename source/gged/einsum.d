@@ -211,8 +211,8 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
         auto lhs = this.eval();
         auto rhs = rhs_.eval();
         static assert(TemplateArgsOf!(typeof(lhs))[0].to!(dchar[]).sort.array == TemplateArgsOf!(typeof(rhs))[0].to!(dchar[]).sort.array );
-        mixin(genEvalAdd(Exp,Exp2,op));
-        // pragma(msg,genEvalAdd(Exp,Exp2,op));
+
+        mixin(genEvalAdd(lhs.EXP,rhs.EXP,op));
     }
     
     auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Exp2,Ig2,Y) rhs) if(op == "*" || op == "/")

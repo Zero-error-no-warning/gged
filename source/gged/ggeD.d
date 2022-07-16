@@ -42,13 +42,6 @@ auto gged(T,size_t X,L)(T[] array,L[X] N) if(isIndex!L)
 	return new Gged!(T,X)(array,N);
 }
 
-
-/// 
-package(ggeD) auto gged(T)() 
-{
-	return new Gged!(T,1)(1);
-}
-
 /// Gged class
 class Gged(T,ulong Rank)
 {
