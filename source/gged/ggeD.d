@@ -492,7 +492,7 @@ struct Index
 	}
 }
 
-package(ggeD) bool isIndex(X)(){
+bool isIndex(X)(){
 	static if(!__traits(isTemplate,X)) 
 		return is(X == Index) ||  is(X == SerialIndex) || isIntegral!X ;
 	else

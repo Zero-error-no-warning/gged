@@ -16,7 +16,7 @@ import ggeD.einsum;
 /// make tensor from array
 /// Params:
 ///   N = shape of tensor
-auto tensor(T,X...)(X N)
+auto tensor(T,X...)(X N) if(allSatisfy!(isIndex,X))
 {
     return Tensor!(Gged!(T,X.length))(gged!(T,X)(N));
 }
@@ -25,7 +25,7 @@ auto tensor(T,X...)(X N)
 /// Params:
 ///   value = sorce of array
 ///   N = shape of tensor
-auto tensor(T,X...)(T[] value,X N)
+auto tensor(T,X...)(T[] value,X N) if(allSatisfy!(isIndex,X))
 {
     return Tensor!(Gged!(T,X.length))(gged!(T,X)(value,N));
 }
@@ -66,7 +66,7 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
         }
         else
         {
-            auto opDispatch(string ignr)() 
+            auto opDispatch(string ignr="")() 
             {
                 static assert(idx.length == Rank,"index length of tensor should be same with rank of the tensor;");
                 return TensorIndexed!(to!(dchar[])(idx).filter!(a=>a!='_').to!string,to!(dchar[])(ignr).sort.uniq.to!string,GG)(_gged);
