@@ -191,3 +191,7 @@ struct defTensor
     /// Levi-Civita symbol
     alias ε = def!((long i,long j,long k)=>sgn((j-i)*(k-j)*(k-i)),3);
 }
+package(ggeD)  string genNewOpBinary(ulong i)
+{
+    return "cast(rhs._mul[0].TYPE) fun("~iota(i).map!(x=>"a["~x.to!string~"],").join.to!string~")";
+}
