@@ -15,6 +15,14 @@ import ggeD.einsum;
 
 /// make tensor from array
 /// Params:
+///   N = shape of tensor
+auto tensor(T,X...)(X N)
+{
+    return Tensor!(Gged!(T,X.length))(gged!(T,X)(N));
+}
+
+/// make tensor from array
+/// Params:
 ///   value = sorce of array
 ///   N = shape of tensor
 auto tensor(T,X...)(T[] value,X N)
@@ -167,7 +175,7 @@ struct defTensor
             }
         }
     }
-    
+
     /// Kronecker delta
     alias δ = def!((i,j)=>(i == j ? 1 : 0));
 
