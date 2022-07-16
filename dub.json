@@ -5,5 +5,5 @@
 	"description": "non-jagged array and tensor library",
 	"license": "MIT",
     "targetType": "library",
-	"versions": []
+	"versions": ["0.0.1"]
 }
