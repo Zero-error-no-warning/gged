@@ -145,36 +145,3 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
         return _gged.opDollar!(rank)();
     }
 }
-
-/// def new Tensor
-struct defTensor(Type)
-{
-    static:
-    template byFun(alias fun,ulong Idx)
-    {
-        alias tmp = byFun!fun;
-        alias byFun = tmp!Idx;
-    }
-    template byFun(alias fun)
-    {
-        auto byFun(ulong Idx)()
-        {
-            auto newone = gged!Type(Repeat!(Idx,Idx));
-            foreach(a;newone.Serial)
-            {
-                newone[a]  = mixin(genNewOpBinary(Idx));
-            } 
-            return tensor(newone);
-        }
-    }
-    /// Kronecker delta
-    alias δ = byFun!((i,j)=>(i == j ? 1 : 0));
-
-    /// Levi-Civita symbol
-    alias ε = byFun!((long i,long j,long k)=>sgn((j-i)*(k-j)*(k-i)),3);
-    
-    package(ggeD)  string genNewOpBinary(ulong i)
-    {
-        return "cast(Type) fun("~iota(i).map!(x=>"a["~x.to!string~"],").join.to!string~")";
-    }
-}
