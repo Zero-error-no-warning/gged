@@ -23,7 +23,11 @@ class Einsum
     static auto opBinary(string op, string Exp,string Ig,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
     {
         auto result = rhs.eval;
-        return Tensor!(result.MainGG)(result._mul[0]);
+        
+        static if(typeof(result).EXP.length == 0)
+            return result._mul[0][0];
+        else
+            return Tensor!(result.MainGG)(result._mul[0]);
     }
 }
 
@@ -57,6 +61,7 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
 {
     package(ggeD) alias MainGG = X[0];
     package(ggeD)  X _mul;
+    package(ggeD)  alias EXP = Alias!Exp;
     static if(Exp=="")
         private auto eval(){
             return this;
