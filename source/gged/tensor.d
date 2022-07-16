@@ -55,18 +55,23 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
     private alias Rank = Alias!(TemplateArgsOf!GG[1]);
     alias _gged this;
     
-    template opDispatch(string str)
+    template opDispatch(string idx)
     {
-        auto opDispatch(string ignr="")() 
+        static if(__traits(hasMember,_gged,idx)) 
         {
-            static if(__traits(hasMember,_gged,idx)) return mixin("_gged."~idx);
-            else
+            auto opDispatch()
             {
-                static assert(idx.length == Rank,"index length of tensor should be same with rank of the tensor;");
-                return TensorIndexed!(to!(dchar[])(idx).filter!(a=>a!='_').to!string,ignr.to!(dchar[]).uniq.to!string,GG)(_gged);
+                return mixin("_gged."~idx);
             }
         }
-        
+        else
+        {
+            auto opDispatch(string ignr)() 
+            {
+                static assert(idx.length == Rank,"index length of tensor should be same with rank of the tensor;");
+                return TensorIndexed!(to!(dchar[])(idx).filter!(a=>a!='_').to!string,to!(dchar[])(ignr).sort.uniq.to!string,GG)(_gged);
+            }
+        }
     }
     
     auto opUnary(string op)() if(op == "-")

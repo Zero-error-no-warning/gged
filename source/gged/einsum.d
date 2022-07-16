@@ -10,7 +10,7 @@ import std;
 
 package(ggeD)  string onlyUniq(string input,string ignr)
 {
-    return input.to!(dchar[]).filter!(a=>input.count(a) == 1 || ignr.to!(dchar[]).any!(b=>a==b) ).array.to!string;
+    return input.to!(dchar[]).filter!(a=>input.count(a) == 1 || ignr.to!(dchar[]).any!(b=>a==b) ).array.sort.uniq.array.to!string;
 }
 
 package(ggeD)  string onlyDup(string input,string ignr)
@@ -20,10 +20,10 @@ package(ggeD)  string onlyDup(string input,string ignr)
 
 class Einsum
 {
-    static auto opBinary(string op, string Exp,string Ig,,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
+    static auto opBinary(string op, string Exp,string Ig,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
     {
         auto result = rhs.eval;
-        return Tensor!(TemplateArgsOf!(typeof(result))[1])(result._mul[0]);
+        return Tensor!(result.MainGG)(result._mul[0]);
     }
 }
 
@@ -55,7 +55,7 @@ package(ggeD) template myCommonType(X...)
 
 package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
 {
-    
+    package(ggeD) alias MainGG = X[0];
     package(ggeD)  X _mul;
     static if(Exp=="")
         private auto eval(){
@@ -69,8 +69,9 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
     {
         string[] idx = Exp.split!isOp;  // 
         string ops = "*" ~ Exp.filter!isOp.array.to!string;
-        string unq = idx.join.onlyUniq(Ignr);   // ijk
-        string dup = idx.join.onlyDup(Ignr);   // 
+        string unq = idx.join.onlyUniq(Ignr);   
+        string dup = idx.join.onlyDup(Ignr);   
+
         alias T =  myCommonType!(staticMap!(getTYPE,X));
         string result;
         result ~= "private auto eval(){ // "~ Exp~"->"~ unq ~ "\n";
@@ -211,7 +212,7 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
     
     auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Exp2,Ig2,Y) rhs) if(op == "*" || op == "/")
     {
-        return TensorIndexed!(Exp ~op~ Exp2,(Ig1~Ig2).to!(dchar[]).sort.uniq.array.to!string,AliasSeq!(X,Y))( _mul ,rhs._mul);
+        return TensorIndexed!(Exp ~op~ Exp2,to!(dchar[])(Ignr~Ig2).sort.uniq.array.to!string,AliasSeq!(X,Y))( _mul ,rhs._mul);
     }
 
     
