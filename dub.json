@@ -1,3 +1,8 @@
 {
-	"name": "gged"
+	"name": "gged",
+	"authors": ["Zenw"],
+	"copyright": "Copyright (c) 2022 Zenw",
+	"versions": ["0.01"],
+	"description": "non-jagged array and tensor library",
+	"license": "MIT"
 }

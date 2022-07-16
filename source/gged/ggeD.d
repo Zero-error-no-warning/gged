@@ -1,35 +1,63 @@
+/*
+Copyright (c) 2022 Zenw
+Released under the MIT license
+https://opensource.org/licenses/mit-license.php
+*/
+
 module ggeD.ggeD;
 import std;
 public import ggeD.vec;
 
+/// create empty gged array 
+/// Params:
+///   N = shape of array
 auto gged(T,X...)(X N) if(allSatisfy!(isIndex,X))
 {
 	return new Gged!(T,X.length)(N);
 } 
+
+/// 
+/// Params:
+///   array = source 1-dim array.
+///   N =  shape of array
 auto gged(T,X...)(T[] array,X N)  if(allSatisfy!(isIndex,X))
 {
 	return new Gged!(T,X.length)(array,N);
 }
 
+/// 
+/// Params:
+///   N =  shape of array
 auto gged(T,size_t X,L)(L[X] N) if(isIndex!L)
 {
 	return new Gged!(T,X)(N);
 }
+
+/// 
+/// Params:
+///   array = source 1-dim array.
+///   N =  shape of array
 auto gged(T,size_t X,L)(T[] array,L[X] N) if(isIndex!L)
 {
 	return new Gged!(T,X)(array,N);
 }
 
-auto gged(T)() 
+
+/// 
+package(ggeD) auto gged(T)() 
 {
 	return new Gged!(T,1)(1);
 }
+
+/// Gged class
 class Gged(T,ulong Rank)
 {
 	alias TYPE = T;
 	alias RANK = Alias!(Rank);
 	private T[] _array;
 
+	/// 
+	/// Returns: elements as 1-dim array.
 	T[] elements()
 	{
 		return _array.indexed(iota(_AllLength).filter!((i){
@@ -44,6 +72,8 @@ class Gged(T,ulong Rank)
 		})).array;
 	}
 
+	/// 
+	/// Returns: dupplication of gged.
 	typeof(this) dup(Flag!"shape" OnlyShape = No.shape)()
 	{
 		if(OnlyShape) return new Gged!(T,Rank)(_rawN.dup);
@@ -57,10 +87,16 @@ class Gged(T,ulong Rank)
 	private ulong[Rank] _until;
 	TaskPool customPool;
 
+	/// 
+	/// Returns: shape of gged array.
 	ulong[Rank] shape()
 	{
 		return _rawN[];
 	}
+
+	/// 
+	/// Params:
+	///   array = source 1-dim array.
 	this(T[] array,ulong[] N...) 
 	{
 		assert(N.length == Rank,format("number of args must be same as Rank: %s , %s" , N, Rank));
@@ -87,6 +123,10 @@ class Gged(T,ulong Rank)
 	}
 		
 		
+
+	/// 
+	/// Params:
+	///   array = source 1-dim array.
 	this(ulong[] N...) 
 	{
 		assert(N.length == Rank,format("number of args must be same as Rank: %s , %s" , N, Rank));
@@ -110,7 +150,8 @@ class Gged(T,ulong Rank)
 		}}
 		_step = cast(immutable)(step);
 	}
-	scope Serial()
+
+	scope auto Serial()
 	{
 		alias TypeSerialIndex = Repeat!(Rank,SerialIndex);
 		return new class 
@@ -371,6 +412,7 @@ class Gged(T,ulong Rank)
 	}
 }
 
+package(ggeD)
 class subGGeD(T,ulong Rank,N...)
 {
 	Gged!(T,Rank) _gged;
@@ -422,7 +464,7 @@ class subGGeD(T,ulong Rank,N...)
 	
 }
 
-private 
+package(ggeD) 
 struct Index
 {
 	ulong _idx =0;
@@ -450,14 +492,14 @@ struct Index
 	}
 }
 
-bool isIndex(X)(){
+package(ggeD) bool isIndex(X)(){
 	static if(!__traits(isTemplate,X)) 
 		return is(X == Index) ||  is(X == SerialIndex) || isIntegral!X ;
 	else
 		return  __traits(isSame,TemplateOf!X ,Vec) && isIntegral!((TemplateArgsOf!X)[1]);
 } 
 
-private 
+package(ggeD) 
 struct SerialIndex
 {
 	this(ulong f)

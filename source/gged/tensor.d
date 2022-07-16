@@ -1,3 +1,9 @@
+/*
+Copyright (c) 2022 Zenw
+Released under the MIT license
+https://opensource.org/licenses/mit-license.php
+*/
+
 module ggeD.tensor;
 
 import ggeD.ggeD;
@@ -6,16 +12,29 @@ import std: canFind;
 
 import ggeD.einsum;
 
+
+/// make tensor from array
+/// Params:
+///   value = sorce of array
+///   N = shape of tensor
 auto tensor(T,X...)(T[] value,X N)
 {
     return Tensor!(Gged!(T,X.length))(gged!(T,X)(value,N));
 }
 
+/// make tensor from gged array
+/// Params:
+///   value = sorce of array
+///   N = shape of tensor
 auto tensor(T,ulong Rank)(Gged!(T,Rank) gg)
 {
     return Tensor!(Gged!(T,Rank))(gg);
 }
-auto tensor(T)(T gg) if(isBasicType!T)
+
+/// 
+/// Params:
+///   gg = 
+package(ggeD) auto tensor(T)(T gg) if(isBasicType!T)
 {
     return gg;
 }
@@ -109,6 +128,8 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
         return _gged.opDollar!(rank)();
     }
 }
+
+/// def new Tensor
 struct defTensor
 {
     template def(alias fun,ulong Idx)
@@ -146,10 +167,10 @@ struct defTensor
             }
         }
     }
-    auto NewF(alias fun,X,Y...)(X value,Y args)
-    {
-        return value.opCalled!(fun,Y)(args);
-    }
+    
+    /// Kronecker delta
     alias δ = def!((i,j)=>(i == j ? 1 : 0));
+
+    /// Levi-Civita symbol
     alias ε = def!((long i,long j,long k)=>sgn((j-i)*(k-j)*(k-i)),3);
 }
