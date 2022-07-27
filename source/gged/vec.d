@@ -169,4 +169,8 @@ struct Vec(ulong Dim,T = double,Names...) if (Names.length <= Dim)
             return _value[0]*rhs[1]-_value[1]*rhs[0];
         }
     }
+    static auto base(ulong n)
+    {
+        return Vec!(Dim,T,Names...)(iota(Dim).map!(i=>cast(T)(i==n?1.:0.)).array);
+    }
 }
