@@ -42,17 +42,20 @@ void main()
 	auto A = tensor!double(iota(9.).array,3,3); // 2 rank tensor(matrix)
     auto B = tensor!double([3.,2,1],3); // 1 rank tensor(vector)
     auto C = Einsum | A.ij*B.i; // You can write an expressions without for statement.
+
+    static assert(is(typeof(C) == Tensor!(double,1))); 
+    assert(C.shape == [3]);
+
     foreach(ijk ; C.Serial) // You can use as gged array;
     {
         writeln(ijk, " | " ,C[ijk]); 
     }
 
     auto tr = Einsum | A.ii; // trace of A.
-    assert
 
     import ggeD : BroadCast; // BroadCast makes a function usable in Einstein summation.
     import std.math : sin; 
-    auto D  = Einsum | A.ij + BroadCast!sin(B.i*B.j); 
+    auto D  = Einsum | A.ij + BroadCast!sin(B.i*B.j); // 
 }
 
 ```

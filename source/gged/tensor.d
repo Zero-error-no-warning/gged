@@ -85,7 +85,7 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
     }
     auto opBinary(string op,R)(Tensor!(Gged!(R,Rank)) rhs) if((isOp(op[0]) || isOpPlusMinus(op)) && (is(myCommonType!(T,R) == T) || is(myCommonType!(T,R) == R )))
     {
-        auto gg = new Gged!(myCommonType!(T,R),Rank)(_gged.shape);
+        auto gg = Gged!(myCommonType!(T,R),Rank)(_gged.shape);
         foreach(a;gg)
         {
             mixin("gg[a] =  _gged[a] "~op~" rhs._gged[a];");

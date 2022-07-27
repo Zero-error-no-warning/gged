@@ -12,7 +12,7 @@ struct Vec(ulong Dim,T = double,Names...) if (Names.length <= Dim)
 {
     T[Dim] _value;
     alias _value this;
-    alias names = Names;
+    alias names = Names; 
 
     static if(Names.length > 0)  
     {

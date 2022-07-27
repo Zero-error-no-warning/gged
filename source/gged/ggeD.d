@@ -13,7 +13,7 @@ public import ggeD.vec;
 ///   N = shape of array
 auto gged(T,X...)(X N) if(allSatisfy!(isIndex,X))
 {
-	return new Gged!(T,X.length)(N);
+	return Gged!(T,X.length)(N);
 } 
 
 /// 
@@ -22,7 +22,7 @@ auto gged(T,X...)(X N) if(allSatisfy!(isIndex,X))
 ///   N =  shape of array
 auto gged(T,X...)(T[] array,X N)  if(allSatisfy!(isIndex,X))
 {
-	return new Gged!(T,X.length)(array,N);
+	return Gged!(T,X.length)(array,N);
 }
 
 /// 
@@ -30,7 +30,7 @@ auto gged(T,X...)(T[] array,X N)  if(allSatisfy!(isIndex,X))
 ///   N =  shape of array
 auto gged(T,size_t X,L)(L[X] N) if(isIndex!L)
 {
-	return new Gged!(T,X)(N);
+	return Gged!(T,X)(N);
 }
 
 /// 
@@ -39,11 +39,11 @@ auto gged(T,size_t X,L)(L[X] N) if(isIndex!L)
 ///   N =  shape of array
 auto gged(T,size_t X,L)(T[] array,L[X] N) if(isIndex!L)
 {
-	return new Gged!(T,X)(array,N);
+	return Gged!(T,X)(array,N);
 }
 
 /// Gged class
-class Gged(T,ulong Rank)
+struct Gged(T,ulong Rank)
 {
 	alias TYPE = T;
 	alias RANK = Alias!(Rank);
@@ -69,8 +69,8 @@ class Gged(T,ulong Rank)
 	/// Returns: dupplication of gged.
 	typeof(this) dup(Flag!"shape" OnlyShape = No.shape)()
 	{
-		if(OnlyShape) return new Gged!(T,Rank)(_rawN.dup);
-		else return new Gged!(T,Rank)(_array.dup,_rawN.dup);
+		if(OnlyShape) return Gged!(T,Rank)(_rawN.dup);
+		else return Gged!(T,Rank)(_array.dup,_rawN.dup);
 	}
 
 	private immutable ulong _AllLength;
@@ -85,6 +85,18 @@ class Gged(T,ulong Rank)
 	ulong[Rank] shape()
 	{
 		return _rawN[];
+	}
+
+	auto shape(R)(ulong[R] shape_)
+	{
+		if(_array)
+		{
+			return Gged!(TYPE,R)(_array,shape_);
+		}
+		else
+		{
+			return Gged!(TYPE,R)(shape_);
+		}
 	}
 
 	/// 
@@ -287,7 +299,7 @@ class Gged(T,ulong Rank)
 		{ 
 			alias idx = IndexOfnotIndex!(0,X);
 			auto f = opIndex!(No.Cut,X)(arg);
-			auto g = new Gged!(T,Rank-Filter!(isIndex,X).length)(f.elements,indexed(shape.to!(ulong[]),[idx]).array);
+			auto g = Gged!(T,Rank-Filter!(isIndex,X).length)(f.elements,indexed(shape.to!(ulong[]),[idx]).array);
 			ulong n = 0;
 			static foreach(i; 0 ..X.length)
 			{{
