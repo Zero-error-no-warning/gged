@@ -15,7 +15,6 @@ auto gged(T,X...)(X N) if(allSatisfy!(isIndex,X))
 {
 	return Gged!(T,X.length)(N);
 } 
-
 /// 
 /// Params:
 ///   array = source 1-dim array.
@@ -42,6 +41,18 @@ auto gged(T,size_t X,L)(T[] array,L[X] N) if(isIndex!L)
 	return Gged!(T,X)(array,N);
 }
 
+unittest
+{
+	auto raw = iota(60.array);
+	auto a = gged(raw,[1,2,3]);
+	assert(a.shape == [1,2,3]);
+	ulong i = 0;
+	foreach(ijk;a.Serial)
+	{
+		assert(a[ijk] == raw[i]);
+		i++;
+	}
+}
 /// Gged class
 struct Gged(T,ulong Rank)
 {
