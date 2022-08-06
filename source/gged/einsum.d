@@ -33,7 +33,7 @@ class Einsum
     {
         return new class
         {
-            static auto opBinary(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
+            static auto opBinary(string op,string Exp,string Ig,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
             {
                 auto result=TensorIndexed!(rhs.EXP,idx,rhs.TYPES)(rhs._mul).eval;
                 static if(typeof(result).EXP.length == 0)
