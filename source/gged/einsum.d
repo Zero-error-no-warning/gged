@@ -10,7 +10,7 @@ import std;
 
 package(ggeD)  string onlyUniq(string input,string ignr)
 {
-    return input.to!(dchar[]).filter!(a=>input.count(a) == 1 || ignr.to!(dchar[]).any!(b=>a==b) ).array.sort.uniq.array.to!string;
+    return ignr != "" ? ignr : input.to!(dchar[]).filter!(a=>input.count(a) == 1).array.sort.uniq.array.to!string;
 }
 
 package(ggeD)  string onlyDup(string input,string ignr)
