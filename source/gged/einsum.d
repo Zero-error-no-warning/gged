@@ -29,6 +29,20 @@ class Einsum
         else
             return Tensor!(result.MainGG)(result._mul[0]);
     }
+    static auto opDispatch(string idx)()
+    {
+        return new class
+        {
+            static auto opBinary(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
+            {
+                auto result=TensorIndexed!(rhs.EXP,idx,rhs.TYPES)(rhs._mul).eval;
+                static if(typeof(result).EXP.length == 0)
+                    return result._mul[0][0];
+                else
+                    return Tensor!(result.MainGG)(result._mul[0]);
+            }
+        };
+    }
 }
 
 class BroadCast(alias f,Arg...)
@@ -61,6 +75,7 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
 {
     package(ggeD) alias MainGG = X[0];
     package(ggeD)  X _mul;
+    package(ggeD)  alias TYPES =  X;
     package(ggeD)  alias EXP = Alias!Exp;
     static if(Exp=="")
         private auto eval(){
