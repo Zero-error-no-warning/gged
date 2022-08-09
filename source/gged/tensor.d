@@ -69,7 +69,7 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
             auto opDispatch() 
             {
                 static assert(idx.length == Rank,"index length of tensor should be same with rank of the tensor;");
-                return TensorIndexed!(to!(dchar[])(idx).filter!(a=>a!='_').to!string,"",GG)(_gged);
+                return TensorIndexed!("",to!(dchar[])(idx).filter!(a=>a!='_').to!string,GG)(_gged);
             }
         }
     }

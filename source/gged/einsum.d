@@ -20,42 +20,69 @@ package(ggeD)  string onlyDup(string input,string ignr)
 
 class Einsum
 {
-    static auto opBinary(string op, string Exp,string Ig,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
+    static auto opBinary(string op,T)(lazy T rhs) if(op == "|")
     {
         auto result = rhs.eval;
-        
         static if(typeof(result).EXP.length == 0)
-            return result._mul[0][0];
+            return result._m[0][0];
         else
-            return Tensor!(result.MainGG)(result._mul[0]);
+            return Tensor!(result.MainGG)(result._m[0]);
     }
-    static auto opDispatch(string idx)()
+
+    static auto opDispatch(string Ignr)()
     {
         return new class
         {
-            static auto opBinary(string op,string Exp,string Ig,X...)(lazy TensorIndexed!(Exp,Ig,X) rhs) if(op == "|")
+            static auto opBinary(string op,T)(lazy T rhs) if(op == "|")
             {
-                auto result=TensorIndexed!(rhs.EXP,idx,rhs.TYPES)(rhs._mul).eval;
+                alias type = TemplateOf!T;
+                auto result = type!(Ignr~TemplateArgsOf!T[0],TemplateArgsOf!T[1..$])(rhs._m).eval;
                 static if(typeof(result).EXP.length == 0)
-                    return result._mul[0][0];
+                    return result._m[0][0];
                 else
-                    return Tensor!(result.MainGG)(result._mul[0]);
+                    return Tensor!(result.MainGG)(result._m[0]);
             }
         };
     }
 }
-
-class BroadCast(alias f,Arg...)
+auto broadCast(alias f,T)(T tensor)
 {
-    static auto opCall(string Exp,string Ig,X...)(TensorIndexed!(Exp,Ig,X) tens, Arg arg)
+    return BroadCast!("",f,T)(tensor);
+}
+struct BroadCast(string Ignr,alias f,T)
+{
+    T _m;
+    alias fun = unaryFun!f;
+    auto eval()
     {
-        auto newone = tens.eval();
-        newone._mul[0] = newone._mul[0].dup;
-        foreach(ref el;newone._mul[0].Elemental)
+        alias type = TemplateOf!T;
+        auto result = type!(Ignr,TemplateArgsOf!T[1..$])(_m.tupleof).eval;
+        foreach(ref e;result._m[0].Elemental)
         {
-            el = f(el,arg);
+            e = fun(e);
         }
-        return newone;
+        return result;
+    }
+    auto opBinary(string op,X)(X rhs_) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
+    {
+        return TensorTree!(Ignr~TemplateArgsOf!X[0],op,typeof(this),typeof(rhs_))(this,rhs_);
+    }
+    auto opBinaryRight(string op,X)(X lhs_) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
+    {
+        return TensorTree!(TemplateArgsOf!X[0]~Ignr,op,typeof(lhs_),typeof(this))(lhs_,this);
+    }
+
+    auto opUnary(string op)() if(op == "-")
+    {
+        return typeof(this)(-_m);
+    }
+    auto opBinary(string op,R)( R rhs)  if(op=="*" ||op=="/" )
+    {
+        return typeof(this)( mixin("_m"~op~"rhs"));
+    }
+    auto opBinaryRight(string op, L)( L lhs)  if(op=="*")
+    {
+        return typeof(this)( mixin("lhs"~ op~"_m"));
     }
 }
 
@@ -71,12 +98,12 @@ package(ggeD) template myCommonType(X...)
 }
 
 
-package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
+package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
 {
     package(ggeD) alias MainGG = X[0];
-    package(ggeD)  X _mul;
-    package(ggeD)  alias TYPES =  X;
-    package(ggeD)  alias EXP = Alias!Exp;
+    package(ggeD) X _m;
+    package(ggeD) alias TYPES =  X;
+    package(ggeD) alias EXP = Alias!Exp;
     static if(Exp=="")
         private auto eval(){
             return this;
@@ -109,9 +136,9 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
                     foreach(c;unq)
                     {
                         auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
-                        result ~= "_mul["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
-                    }
+                        result ~= "_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
                 }
+                    }
                 else    // scalar
                 {
                     result~="1";    
@@ -124,7 +151,7 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
                     foreach(c;dup)
                     {
                         auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
-                        result ~= "_mul["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
+                        result ~= "_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
                     }
                 }
                 else    // scalar
@@ -166,28 +193,130 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
                     else static if(is(T==class)) result~=" newgged[ui] = newgged[ui] + new T(1)";
                     foreach(i;0..idx.length)
                     {
-                        result~= ops[i] ~ " _mul[" ~ i.to!string ~ "][r_" ~ i.to!string ~ "]";
+                        result~= ops[i] ~ " _m[" ~ i.to!string ~ "][r_" ~ i.to!string ~ "]";
                     }
                     result ~=";\n";
                 result ~= "}\n";
             result ~= "}\n";
-            result ~= "return TensorIndexed!(`"~ unq ~"`,`"~Ignr~"`,typeof(newgged))(newgged);\n";
+            result ~= "return TensorIndexed!(`"~Ignr~"`,`"~ unq ~"`,typeof(newgged))(newgged);\n";
         result ~= "}\n";
         return result;
     }
 
-    private static string genEvalAdd(string exp1,string exp2,string op)
+    
+    auto opBinary(string op,X)(X rhs_) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
     {
-        string[] idx = [exp1,exp2]; 
-        string unq = idx.join.to!(dchar[]).sort.uniq.array.to!string;   // ijk
+        return TensorTree!(Ignr~TemplateArgsOf!X[0],op,typeof(this),typeof(rhs_))(this,rhs_);
+    }
+    auto opBinaryRight(string op,X)(X _lhs) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
+    {
+        return TensorTree!(Ignr~TemplateArgsOf!X[0],op,typeof(_lhs),typeof(this))(_lhs,this);
+    }
+
+    auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Ig2,Exp2,Y) rhs) if(op == "*" || op == "/")
+    {
+        return TensorIndexed!(Ignr~Ig2,Exp ~op~ Exp2,AliasSeq!(X,Y))( _m ,rhs._m);
+    }
+
+    
+    auto opUnary(string op)() if(op == "-")
+    {
+        auto result = typeof(this)(_m[0].dup);
+        foreach(idx;_m[0])
+        {
+            result._m[0][idx] = mixin(op ~"_m[0][idx]");
+        }
+        return this;
+    }
+    auto opBinary(string op,R)( R rhs)  if(isNumeric!R && (op=="*" || op=="/"))
+    {
+        auto result = typeof(this)(_m[0].dup);
+        foreach(idx;_m[0])
+        {
+            result._m[0][idx] = mixin("_m[0][idx]" ~ op ~ "rhs");
+        }
+        return this;
+    }
+    auto opBinaryRight(string op, L)( L lhs)  if(isNumeric!L && op=="*")
+    {
+        auto result = typeof(this)(_m[0].dup);
+        foreach(idx;_m[0])
+        {
+            result._m[0][idx] = mixin("lhs" ~ op ~ "_m[0][idx]");
+        }
+        return result;
+    }
+}
+
+
+package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
+{
+    alias A = X[0];
+    alias B = X[1];
+    X _m;
+    alias OP = Alias!op;
+    alias IGNR = Alias!Ignr;
+    alias typeA = A;
+    alias typeB = B;
+
+    auto opBinary(string op,X)(X rhs_) if(op == "+" || op == "-")
+    {
+        return TensorTree!(Ignr~TemplateArgsOf!X[0],op,typeof(this),typeof(rhs_))(this,rhs_);
+    }
+    auto opBinaryRight(string op,X)(X lhs_) if(op == "+" || op == "-")
+    {
+        return TensorTree!(Ignr~TemplateArgsOf!X[0],op,typeof(lhs_),typeof(this))(lhs_,this);
+    }
+    auto opUnary(string op)() if(op == "-")
+    {
+        return typeof(this)(-_m[0],-_m[1]);
+    }
+    auto opBinary(string op,R)( R rhs)  if(op=="*" ||op=="/")
+    {
+        return typeof(this)( mixin("_m[0]"~op~"rhs"),mixin("_m[1]"~op~"rhs"));
+    }
+    auto opBinaryRight(string op, L)( L lhs)  if( op=="*")
+    {
+        return typeof(this)( mixin("lhs"~ op~"_m[0]"),mixin("lhs"~op~"_m[1]"));
+    }
+    auto eval()
+    {
+        alias type1 = TemplateOf!A;
+        alias type2 = TemplateOf!B;
+        auto lhs = type1!(Ignr~TemplateArgsOf!A[0],TemplateArgsOf!A[1..$])(_m[0]._m).eval;
+        auto rhs = type2!(Ignr~TemplateArgsOf!B[0],TemplateArgsOf!B[1..$])(_m[1]._m).eval;
+
+        // static assert(TemplateArgsOf!(typeof(lhs))[0].to!(dchar[]).sort.array == TemplateArgsOf!(typeof(rhs))[0].to!(dchar[]).sort.array );
+        static if(lhs.EXP.onlyUniq(Ignr).to!(dchar[]).sort == rhs.EXP.onlyUniq(Ignr).to!(dchar[]).sort)
+        {
+            mixin(genEvalAdd(lhs.EXP,rhs.EXP,op,Ignr));
+        }
+        else
+        {
+            // return TensorIndexed!("","",Gged!bool(1)(true,1)); // dummy return;
+            return lhs; // dummy return;
+        }
+    }
+    private static string genEvalAdd(string exp1,string exp2,string op,string ignr)
+    {
+        string[] idx = [exp1]; 
+        // string unq = idx.join.to!(dchar[]).sort.uniq.array.to!string;   // ijk
+        string unq = idx.join.onlyUniq(ignr);   
         string result;
-            result ~="alias T = TemplateArgsOf!(X[0])[0];\n";
+            result ~= "alias T = TemplateArgsOf!(typeof(lhs).TYPES[0])[0];\n";
             result ~= "auto result = gged!T(";
+            if(unq.length > 0)
+            {
                 foreach(c;unq)
                 {
                     auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
-                    result ~= (r.front == 1 ? "rhs." : "lhs.") ~ "_mul[0].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
+                    result ~= (r.front == 1 ? "rhs." : "lhs.") ~ "_m[0].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
                 }
+            }
+            else    // scalar
+            {
+                result~="1";    
+            }
             result ~= ");\n";
 
             result ~= "foreach(idx;result){\n";
@@ -196,6 +325,7 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
                     result ~= "auto r1 = Vec!("~ exp1.length.to!string ~",ulong)([";
                         foreach(c;unq)
                         {
+
                             auto cnt =  exp1.countUntil(c);
                             if(unq.length > 1) result ~= "idx["~cnt.to!string~"]._idx,";
                             else result ~=  "idx._idx,";
@@ -211,60 +341,17 @@ package(ggeD)  struct TensorIndexed(string Exp,string Ignr = "",X...)
                 }
                 else
                 {
-                    result ~= "auto r1 = idx._idx;";
-                    result ~= "auto r2 = idx._idx;";
+                    result ~= "ulong r1 = idx;\n";
+                    result ~= "ulong r2 = idx;\n";
                 }
-                result~="result[idx] = lhs._mul[0][r1] "~op~" rhs._mul[0][r2];";
+                result~="result[idx] = lhs._m[0][r1] "~op~" rhs._m[0][r2];\n";
             result ~= "}\n";
-            result ~= "return TensorIndexed!(`"~ unq ~"`,`"~Ignr~"`,typeof(result))(result);\n";
+            result ~= "return TensorIndexed!(`"~Ignr~"`,`"~ unq ~"`,typeof(result))(result);\n";
         return result;
     }
 
     
-    auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Exp2,Ig2,Y) rhs_) if(op == "+" || op == "-")
-    {
-        auto lhs = this.eval();
-        auto rhs = rhs_.eval();
-        static assert(TemplateArgsOf!(typeof(lhs))[0].to!(dchar[]).sort.array == TemplateArgsOf!(typeof(rhs))[0].to!(dchar[]).sort.array );
-
-        mixin(genEvalAdd(lhs.EXP,rhs.EXP,op));
-    }
-    
-    auto opBinary(string op,string Exp2,string Ig2,Y...)(TensorIndexed!(Exp2,Ig2,Y) rhs) if(op == "*" || op == "/")
-    {
-        return TensorIndexed!(Exp ~op~ Exp2,to!(dchar[])(Ignr~Ig2).sort.uniq.array.to!string,AliasSeq!(X,Y))( _mul ,rhs._mul);
-    }
-
-    
-    auto opUnary(string op)() if(op == "-")
-    {
-        auto lhs = this.eval();
-        foreach(idx;lhs._mul[0])
-        {
-            lhs._mul[0][idx] = mixin(op ~"lhs._mul[0][idx]");
-        }
-        return lhs;
-    }
-    auto opBinary(string op,R)( R rhs)  if(isNumeric!R)
-    {
-        auto lhs = this.eval();
-        foreach(idx;lhs._mul[0])
-        {
-            lhs._mul[0][idx] = mixin("lhs._mul[0][idx]" ~ op ~ "rhs");
-        }
-        return lhs;
-    }
-    auto opBinaryRight(string op, L)( L lhs)  if(isNumeric!L && op!="/")
-    {
-        auto rhs = this.eval();
-        foreach(idx;rhs._mul[0])
-        {
-            rhs._mul[0][idx] = mixin("lhs" ~ op ~ "rhs._mul[0][idx]");
-        }
-        return rhs;
-    }
 }
-
 package(ggeD)  bool isOp(dchar op)
 {
     return op == '*' || op =='/';
