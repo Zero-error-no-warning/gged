@@ -49,19 +49,60 @@ auto broadCast(alias f,T)(T tensor)
 {
     return BroadCast!("",f,T)(tensor);
 }
-struct BroadCast(string Ignr,alias f,T)
+
+template onlyOdd(X...)
 {
-    T _m;
+    static if(X.length == 0) alias onlyEven = void;
+    else static if(X.length <= 2) alias onlyOdd = AliasSeq!(X[0]);
+    else
+    {
+        alias onlyOdd = AliasSeq!(X[0] , onlyOdd!(X[2..$]));
+    }
+}
+template onlyEven(X...)
+{
+    static if(X.length <= 1) alias onlyEven = void;
+    else static if(X.length == 2) alias onlyEven = AliasSeq!(X[1]);
+    else
+    {
+        alias onlyEven = AliasSeq!(X[1] , onlyEven!(X[2..$]));
+    }
+}
+
+struct BroadCast(string Ignr,alias f,T...) if(T.length %2 == 1)
+{
+    T[0] _m;
+    static if(T.length > 1) onlyEven!(T[1..$]) _vs;
+    static if(T.length > 1) static alias _ops = onlyOdd!(T[1..$]);
+    static if(T.length > 1)
+    static string multireturn()
+    {
+        string result = "result";
+        static foreach(i; 0.._vs.length)
+        {{
+            result ~= _ops[i] ~ "_vs["~i.to!string~"]";
+        }}
+        return result;
+    }
+
     alias fun = unaryFun!f;
     auto eval()
     {
-        alias type = TemplateOf!T;
-        auto result = type!(Ignr,TemplateArgsOf!T[1..$])(_m.tupleof).eval;
+        alias type = TemplateOf!(T[0]);
+        auto tmp = type!(Ignr,TemplateArgsOf!(T[0])[1..$])(_m.tupleof).eval;
+        auto result = typeof(tmp)(tmp._m[0].dup);
         foreach(ref e;result._m[0].Elemental)
         {
             e = fun(e);
         }
-        return result;
+        static if(T.length ==1)
+        {
+            return result;
+        }
+        else
+        {
+            return mixin(multireturn).eval;
+        }
     }
     auto opBinary(string op,X)(X rhs_) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
     {
@@ -74,15 +115,15 @@ struct BroadCast(string Ignr,alias f,T)
 
     auto opUnary(string op)() if(op == "-")
     {
-        return typeof(this)(-_m);
+        return BroadCast!(Ignr,x=>-fun(x),T)(_m);
     }
-    auto opBinary(string op,R)( R rhs)  if(op=="*" ||op=="/" )
+    auto opBinary(string op,R)( R rhs)  if( op=="*" || op=="/" )
     {
-        return typeof(this)( mixin("_m"~op~"rhs"));
+        return BroadCast!(Ignr,fun,T,op,R)(_m,rhs);
     }
     auto opBinaryRight(string op, L)( L lhs)  if(op=="*")
     {
-        return typeof(this)( mixin("lhs"~ op~"_m"));
+        return BroadCast!(Ignr,fun,T,op,L)(_m,lhs);   
     }
 }
 
