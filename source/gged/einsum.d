@@ -36,7 +36,7 @@ class Einsum
             static auto opBinary(string op,T)(lazy T rhs) if(op == "|")
             {
                 alias type = TemplateOf!T;
-                auto result = type!(Ignr~TemplateArgsOf!T[0],TemplateArgsOf!T[1..$])(rhs._m).eval;
+                auto result = type!(Ignr~TemplateArgsOf!T[0],TemplateArgsOf!T[1..$])(rhs.tupleof).eval;
                 static if(typeof(result).EXP.length == 0)
                     return result._m[0][0];
                 else
@@ -52,7 +52,7 @@ auto broadCast(alias f,T)(T tensor)
 
 template onlyOdd(X...)
 {
-    static if(X.length == 0) alias onlyEven = void;
+    static if(X.length == 0) alias onlyEven = AliasSeq!();
     else static if(X.length <= 2) alias onlyOdd = AliasSeq!(X[0]);
     else
     {
@@ -61,7 +61,7 @@ template onlyOdd(X...)
 }
 template onlyEven(X...)
 {
-    static if(X.length <= 1) alias onlyEven = void;
+    static if(X.length <= 1) alias onlyEven = AliasSeq!();
     else static if(X.length == 2) alias onlyEven = AliasSeq!(X[1]);
     else
     {
@@ -72,9 +72,8 @@ template onlyEven(X...)
 struct BroadCast(string Ignr,alias f,T...) if(T.length %2 == 1)
 {
     T[0] _m;
-    static if(T.length > 1) onlyEven!(T[1..$]) _vs;
-    static if(T.length > 1) static alias _ops = onlyOdd!(T[1..$]);
-    static if(T.length > 1)
+    onlyEven!(T[1..$]) _vs;
+    alias _ops = onlyOdd!(T[1..$]);
     static string multireturn()
     {
         string result = "result";
@@ -91,19 +90,13 @@ struct BroadCast(string Ignr,alias f,T...) if(T.length %2 == 1)
         alias type = TemplateOf!(T[0]);
         auto tmp = type!(Ignr,TemplateArgsOf!(T[0])[1..$])(_m.tupleof).eval;
         auto result = typeof(tmp)(tmp._m[0].dup);
-        foreach(ref e;result._m[0].Elemental)
+        foreach(ref e ; result._m[0].Elemental)
         {
             e = fun(e);
         }
-        static if(T.length ==1)
-        {
-            return result;
-        }
-        else
-        {
-            return mixin(multireturn).eval;
-        }
+        return mixin(multireturn).eval;
     }
+
     auto opBinary(string op,X)(X rhs_) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
     {
         return TensorTree!(Ignr~TemplateArgsOf!X[0],op,typeof(this),typeof(rhs_))(this,rhs_);
@@ -276,7 +269,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
         {
             result._m[0][idx] = mixin("_m[0][idx]" ~ op ~ "rhs");
         }
-        return this;
+        return result;
     }
     auto opBinaryRight(string op, L)( L lhs)  if(isNumeric!L && op=="*")
     {
