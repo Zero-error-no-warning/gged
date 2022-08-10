@@ -15,7 +15,7 @@ package(ggeD)  string onlyUniq(string input,string ignr)
 
 package(ggeD)  string onlyDup(string input,string ignr)
 {
-    return input.to!(dchar[]).filter!(a=>input.count(a) > 1 && ignr.to!(dchar[]).all!(b=>a!=b)).array.sort.uniq.array.to!string;
+    return ignr != "" ? input.to!(dchar[]).filter!(a=>ignr.count(a)==0).array.sort.uniq.array.to!string :  input.to!(dchar[]).filter!(a=>input.count(a) > 1 ).array.sort.uniq.array.to!string;
 }
 
 class Einsum
