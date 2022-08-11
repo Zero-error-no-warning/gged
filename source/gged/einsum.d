@@ -143,7 +143,6 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
             return this;
         }
     else{
-        pragma(msg,genEval);
         mixin(genEval);
     }
     private alias getTYPE(T) = T.TYPE;
