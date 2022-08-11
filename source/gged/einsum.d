@@ -345,7 +345,7 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
                 auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
                 result ~= "foreach(r_" ~ i.to!string~"; 0.."~ (r.front == 1 ? "rhs." : "lhs.") ~"_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"])\n";
             }
-
+            result ~= "{\n";
             result ~= "result[";
             foreach(c;unq)
             {
