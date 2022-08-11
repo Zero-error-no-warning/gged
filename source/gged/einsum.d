@@ -143,6 +143,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
             return this;
         }
     else{
+        // pragma(msg,genEval);
         mixin(genEval);
     }
     private alias getTYPE(T) = T.TYPE;
@@ -162,7 +163,6 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
             result ~= "return this;\n}";
             return result;
         }
-            // result ~="alias T = TemplateArgsOf!(X[0])[0];\n";
             result ~="alias T = myCommonType!(staticMap!(getTYPE,X));\n";
 
             result ~= "auto newgged = gged!T(";
@@ -181,18 +181,11 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
             result ~= ");\n";
 
             result ~= "auto sumgg = gged!T(";
-                if(iall.length > 0)
-                {
                     foreach(c;iall)
                     {
                         auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
                         result ~= "_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
                     }
-                }
-                else    // scalar
-                {
-                    result~="1";    // コメント
-                }
             result ~= ");\n";
 
             result ~= "foreach(ui;newgged){\n";
@@ -200,37 +193,35 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
                 else static if(is(T==struct)) result~="newgged[ui] = T(0);\n";
                 else static if(is(T==class))  result~="newgged[ui] = new T(0);\n";
             result ~= "}\n";
-            result~="foreach(di;sumgg.Serial){\n";
-                foreach(i,ijk;idx)
+             foreach(i,c;iall)
+            {
+                auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
+                result ~= "foreach(r_" ~ i.to!string~"; 0.."~"_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"])\n";
+            }
+            result ~="{\n";
+                result ~= "newgged[";
+                if(unq.length>0)
                 {
-                    if(ijk.length > 1)
-                    {
-                        result ~= "auto r_" ~ i.to!string ~ " = Vec!("~ ijk.length.to!string ~",ulong)([";
-                            foreach(c;ijk)
-                            {
-                                result ~=  "di["~iall.countUntil(c).to!string~"]._idx" ~",";
-                            }
-                        result ~= "]);\n";
-                    }
-                    else
-                    {
-                        result ~= "auto r_" ~ i.to!string ~ " = ";
-                        result ~= "di["~iall.countUntil(ijk[0]).to!string~"]._idx" ~";\n";
-                    }
-                }
-                result ~= "auto ui = Vec!("~unq.length.to!string~",ulong)([";
                     foreach(c;unq)
                     {
-                        result ~=  "di["~iall.countUntil(c).to!string~"]._idx" ~",";
+                        result~= "r_"~iall.countUntil(c).to!string~",";
                     }
-                result ~= "]);\n";
-
-                static if(isNumeric!T)  result~="newgged[ui] +=  + 1";
-                else static if(is(T==struct)) result~="newgged[ui] += T(1)";
-                else static if(is(T==class)) result~=" newgged[ui] +=  new T(1)";
+                }
+                else{
+                    result ~= "0";
+                } 
+                result~="] += ";
+                static if(isNumeric!T)          result ~= "1";
+                else static if(is(T==struct))   result ~= "T(1)";
+                else static if(is(T==class))    result ~= "new T(1)";
                 foreach(i;0..idx.length)
                 {
-                    result~= ops[i] ~ " _m[" ~ i.to!string ~ "][r_" ~ i.to!string ~ "]";
+                    result ~=ops[i] ~ "_m["~i.to!string~"][";
+                    foreach(c;idx[i])
+                    {
+                        result~= "r_"~iall.countUntil(c).to!string~",";
+                    }
+                    result ~="]";
                 }
                 result ~=";\n";
             result ~= "}\n";
@@ -325,6 +316,7 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
         // static assert(TemplateArgsOf!(typeof(lhs))[0].to!(dchar[]).sort.array == TemplateArgsOf!(typeof(rhs))[0].to!(dchar[]).sort.array );
         static if(lhs.EXP.onlyUniq(Ignr).to!(dchar[]).sort == rhs.EXP.onlyUniq(Ignr).to!(dchar[]).sort)
         {
+            // pragma(msg,genEvalAdd(lhs.EXP,rhs.EXP,op,Ignr));
             mixin(genEvalAdd(lhs.EXP,rhs.EXP,op,Ignr));
         }
         else
@@ -341,46 +333,36 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
         string result;
             result ~= "alias T = TemplateArgsOf!(typeof(lhs).TYPES[0])[0];\n";
             result ~= "auto result = gged!T(";
-            if(unq.length > 0)
+            foreach(c;unq)
             {
-                foreach(c;unq)
-                {
-                    auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
-                    result ~= (r.front == 1 ? "rhs." : "lhs.") ~ "_m[0].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
-                }
-            }
-            else    // scalar
-            {
-                result~="1";    
+                auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
+                result ~= (r.front == 1 ? "rhs." : "lhs.") ~ "_m[0].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
             }
             result ~= ");\n";
 
-            result ~= "foreach(idx;result){\n";
-                if(unq.length > 1)
-                {
-                    result ~= "auto r1 = Vec!("~ exp1.length.to!string ~",ulong)([";
-                        foreach(c;unq)
-                        {
+            foreach(i,c;unq)
+            {
+                auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
+                result ~= "foreach(r_" ~ i.to!string~"; 0.."~ (r.front == 1 ? "rhs." : "lhs.") ~"_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"])\n";
+            }
 
-                            auto cnt =  exp1.countUntil(c);
-                            if(unq.length > 1) result ~= "idx["~cnt.to!string~"]._idx,";
-                            else result ~=  "idx._idx,";
-                        }
-                    result ~= "]);\n";
-                    result ~= "auto r2 = Vec!("~ exp2.length.to!string ~",ulong)([";
-                        foreach(c;unq)
-                        {
-                            auto cnt =  exp2.countUntil(c);
-                            result ~= "idx["~cnt.to!string~"]._idx,";
-                        }
-                    result ~= "]);\n";
-                }
-                else
-                {
-                    result ~= "ulong r1 = idx;\n";
-                    result ~= "ulong r2 = idx;\n";
-                }
-                result~="result[idx] = lhs._m[0][r1] "~op~" rhs._m[0][r2];\n";
+            result ~= "result[";
+            foreach(c;unq)
+            {
+                result~= "r_"~unq.countUntil(c).to!string~",";
+            }
+            result~="]=";
+            result~="lhs._m[0][";
+            foreach(c;unq)
+            {
+                result~= "r_"~exp1.countUntil(c).to!string~",";
+            }
+            result ~="]"~op~" rhs._m[0][";
+            foreach(c;unq)
+            {
+                result~= "r_"~exp2.countUntil(c).to!string~",";
+            }
+            result ~="];\n";
             result ~= "}\n";
             result ~= "return TensorIndexed!(`"~Ignr~"`,`"~ unq ~"`,typeof(result))(result);\n";
         return result;
