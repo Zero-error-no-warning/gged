@@ -10,7 +10,7 @@ import std;
 
 package(ggeD)  string onlyUniq(string input,string ignr)
 {
-    return ignr != "" ? ignr : input.to!(dchar[]).filter!(a=>input.count(a) == 1).array.sort.uniq.array.to!string;
+    return ignr != "" ? ignr : input.to!(dchar[]).filter!(a=>input.count(a) == 1).array.array.to!string;
 }
 
 package(ggeD)  string onlyDup(string input,string ignr)
@@ -331,12 +331,13 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
         // string unq = idx.join.to!(dchar[]).sort.uniq.array.to!string;   // ijk
         string unq = idx.join.onlyUniq(ignr);   
         string result;
+        result ~= "//"~exp1~exp2~"\n";
             result ~= "alias T = TemplateArgsOf!(typeof(lhs).TYPES[0])[0];\n";
             result ~= "auto result = gged!T(";
             foreach(c;unq)
             {
                 auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
-                result ~= (r.front == 1 ? "rhs." : "lhs.") ~ "_m[0].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
+                result ~="lhs._m[0].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
             }
             result ~= ");\n";
 
