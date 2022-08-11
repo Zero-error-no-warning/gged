@@ -95,7 +95,12 @@ struct Gged(T,ulong Rank)
 	/// Returns: shape of gged array.
 	ulong[Rank] shape()
 	{
-		return _rawN[];
+		ulong[Rank] result;
+		foreach(i,ref r;result)
+		{
+			r = _until[i]-_since[i];
+		}
+		return result;
 	}
 
 	auto shape(R)(ulong[R] shape_)
@@ -241,6 +246,10 @@ struct Gged(T,ulong Rank)
 	}
     int opApply(int delegate(Repeat!(Rank,Index)) fun) 
     {
+		// static foreach(n ; 0..Rank)
+		// {{
+		// 	idx2xyz[n] = Index();
+		// }}
 		foreach(i; parallel(iota(_AllLength)))
 		{
 			Repeat!(Rank,Index) idx2xyz;
@@ -253,15 +262,19 @@ struct Gged(T,ulong Rank)
 				idx2xyz[n]._idx -= _since[n] ;
 			}}
 			if(inRange) fun(idx2xyz);
+			else
+			{
+				
+			}
 		}
 		return 1;
     }
 
     static if(Rank>1) int opApply(int delegate(Vec!(Rank,Index)) fun) 
     {
-		foreach(i; parallel(iota(_AllLength)))
+		Vec!(Rank,Index) idx2xyz;
+		foreach(i; (iota(_AllLength)))
 		{
-			Vec!(Rank,Index) idx2xyz;
 			bool inRange = true;
 			static foreach(n ; 0..Rank)
 			{{
@@ -292,58 +305,23 @@ struct Gged(T,ulong Rank)
 		}}
 		return _array[n];
 	}
-	auto opIndex(Flag!"Cut" cutted = No.Cut, X...)(X arg) if((X.length > 1 &&!allSatisfy!(isIndex,X))|| (X.length==1 && isArray!(X) ) )
+	auto opIndex(X...)(X arg) if((X.length > 1 &&!allSatisfy!(isIndex,X))|| (X.length==1 && isArray!(X) ) )
 	{
-		template IndexOfnotIndex(ulong N,X...)
-		{
-			static if(X.length == 1)
-				static if(!isIndex!X)
-					alias IndexOfnotIndex =  AliasSeq!N;
-				else
-					alias IndexOfnotIndex = AliasSeq!();
+		auto g = gged!T(_array,shape);
+		static foreach(i; 0 .. X.length)
+		{{
+			static if(isArray!(typeof(arg[i])))
+			{
+				g._since[i] = arg[i][0];
+				g._until[i] = arg[i][1];
+			}
 			else
 			{
-				alias IndexOfnotIndex =  AliasSeq!(IndexOfnotIndex!(N,X[0]),IndexOfnotIndex!(N+1,X[1..$]));
+				g._since[i] = arg[i];
+				g._until[i] = arg[i]+1;
 			}
-		}
-		static if(cutted)
-		{ 
-			alias idx = IndexOfnotIndex!(0,X);
-			auto f = opIndex!(No.Cut,X)(arg);
-			auto g = Gged!(T,Rank-Filter!(isIndex,X).length)(f.elements,indexed(shape.to!(ulong[]),[idx]).array);
-			ulong n = 0;
-			static foreach(i; 0 ..X.length)
-			{{
-				static if(isArray!(typeof(arg[i])))
-				{
-					g._since[n] = arg[i][0];
-					g._until[n] = arg[i][1];
-					n ++ ;
-				}
-				else
-				{
-				}
-			}}
-			return g;
-		}
-		else
-		{
-			auto g = gged!T(_array,shape);
-			static foreach(i; 0 .. X.length)
-			{{
-				static if(isArray!(typeof(arg[i])))
-				{
-					g._since[i] = arg[i][0];
-					g._until[i] = arg[i][1];
-				}
-				else
-				{
-					g._since[i] = arg[i];
-					g._until[i] = arg[i]+1;
-				}
-			}}
-			return g;
-		}
+		}}
+		return g;
 	}
 	static if(Rank == 1)
 	{

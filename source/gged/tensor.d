@@ -121,7 +121,7 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
     }
     auto opIndex(X...)(X arg) if(!allSatisfy!(isIndex,X))
     {
-        return _gged.opIndex!(Yes.Cut,X)(arg).tensor;
+        return _gged.opIndex!X(arg).tensor;
     } 
     
     void opIndexAssign(X)(T value,Vec!(Rank,X) arg) if(isIndex!X)
