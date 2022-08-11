@@ -143,6 +143,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
             return this;
         }
     else{
+        pragma(msg,genEval);
         mixin(genEval);
     }
     private alias getTYPE(T) = T.TYPE;
@@ -152,6 +153,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
         string ops = "*" ~ Exp.filter!isOp.array.to!string;
         string unq = idx.join.onlyUniq(Ignr);   
         string dup = idx.join.onlyDup(Ignr);   
+        string iall = idx.join.to!(dchar[]).array.sort.uniq.array.to!string;   
 
         alias T =  myCommonType!(staticMap!(getTYPE,X));
         string result;
@@ -171,8 +173,8 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
                     {
                         auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
                         result ~= "_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
-                }
                     }
+                }
                 else    // scalar
                 {
                     result~="1";    
@@ -180,9 +182,9 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
             result ~= ");\n";
 
             result ~= "auto sumgg = gged!T(";
-                if(dup.length > 0)
+                if(iall.length > 0)
                 {
-                    foreach(c;dup)
+                    foreach(c;iall)
                     {
                         auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
                         result ~= "_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"],";
@@ -198,39 +200,40 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
                 static if(isNumeric!T) result~="newgged[ui] = 0;\n";
                 else static if(is(T==struct)) result~="newgged[ui] = T(0);\n";
                 else static if(is(T==class))  result~="newgged[ui] = new T(0);\n";
-                result~="foreach(di;sumgg.Serial){\n";
-                    foreach(i,ijk;idx)
+            result ~= "}\n";
+            result~="foreach(di;sumgg.Serial){\n";
+                foreach(i,ijk;idx)
+                {
+                    if(ijk.length > 1)
                     {
-                        if(ijk.length > 1)
-                        {
-                            result ~= "auto r_" ~ i.to!string ~ " = Vec!("~ ijk.length.to!string ~",ulong)([";
-                                foreach(c;ijk)
-                                {
-                                    auto cnt =  unq.countUntil(c);
-                                    auto len = cnt >= 0 ? unq.length : dup.length;
-                                    if(len>1) result ~= (cnt>=0 ? "ui["~cnt.to!string~"]._idx" : "di["~dup.countUntil(c).to!string~"]._idx") ~",";
-                                    else result ~= (cnt>=0 ? "ui._idx" : "di._idx") ~",";
-                                }
-                            result ~= "]);\n";
-                        }
-                        else
-                        {
-                            result ~= "auto r_" ~ i.to!string ~ " = ";
-                            auto cnt =  unq.countUntil(ijk[0]);
-                            auto len = cnt >= 0 ? unq.length : dup.length;
-                            if(len>1) result ~= (cnt>=0 ? "ui["~cnt.to!string~"]._idx" : "di["~dup.countUntil(ijk[0]).to!string~"]._idx") ~";\n";
-                            else result ~= (cnt>=0 ? "ui._idx" : "di._idx") ~";\n";
-                        }
+                        result ~= "auto r_" ~ i.to!string ~ " = Vec!("~ ijk.length.to!string ~",ulong)([";
+                            foreach(c;ijk)
+                            {
+                                result ~=  "di["~iall.countUntil(c).to!string~"]._idx" ~",";
+                            }
+                        result ~= "]);\n";
                     }
-                    static if(isNumeric!T)  result~="newgged[ui] =  newgged[ui] + 1";
-                    else static if(is(T==struct)) result~="newgged[ui]  =newgged[ui] + T(1)";
-                    else static if(is(T==class)) result~=" newgged[ui] = newgged[ui] + new T(1)";
-                    foreach(i;0..idx.length)
+                    else
                     {
-                        result~= ops[i] ~ " _m[" ~ i.to!string ~ "][r_" ~ i.to!string ~ "]";
+                        result ~= "auto r_" ~ i.to!string ~ " = ";
+                        result ~= "di["~iall.countUntil(ijk[0]).to!string~"]._idx" ~";\n";
                     }
-                    result ~=";\n";
-                result ~= "}\n";
+                }
+                result ~= "auto ui = Vec!("~unq.length.to!string~",ulong)([";
+                    foreach(c;unq)
+                    {
+                        result ~=  "di["~iall.countUntil(c).to!string~"]._idx" ~",";
+                    }
+                result ~= "]);\n";
+
+                static if(isNumeric!T)  result~="newgged[ui] +=  + 1";
+                else static if(is(T==struct)) result~="newgged[ui] += T(1)";
+                else static if(is(T==class)) result~=" newgged[ui] +=  new T(1)";
+                foreach(i;0..idx.length)
+                {
+                    result~= ops[i] ~ " _m[" ~ i.to!string ~ "][r_" ~ i.to!string ~ "]";
+                }
+                result ~=";\n";
             result ~= "}\n";
             result ~= "return TensorIndexed!(`"~Ignr~"`,`"~ unq ~"`,typeof(newgged))(newgged);\n";
         result ~= "}\n";
