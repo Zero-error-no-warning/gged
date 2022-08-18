@@ -87,8 +87,8 @@ struct Gged(T,ulong Rank)
 	private immutable ulong _AllLength;
 	private immutable ulong[Rank] _step;
 	private immutable ulong[Rank] _rawN;
-	private ulong[Rank] _since;
-	private ulong[Rank] _until;
+	private immutable ulong[Rank] _since;
+	private immutable sulong[Rank] _until;
 	TaskPool customPool;
 
 	/// 
@@ -103,17 +103,15 @@ struct Gged(T,ulong Rank)
 		return result;
 	}
 
-	auto shape(R)(ulong[R] shape_)
+	auto reShape(R)(ulong[R] shape)
 	{
-		if(_array)
-		{
-			return Gged!(TYPE,R)(_array,shape_);
-		}
-		else
-		{
-			return Gged!(TYPE,R)(shape_);
-		}
+		return Gged!(TYPE,R)(_array,shape_);
 	}
+
+		
+	/// default constructor is disable
+	@disable this();
+		
 
 	/// 
 	/// Params:
@@ -142,8 +140,6 @@ struct Gged(T,ulong Rank)
 		_step = cast(immutable)(step);
 		assert(_AllLength == elements.length, "array length and shape are not corresponded");
 	}
-		
-		
 
 	/// 
 	/// Params:
@@ -191,7 +187,7 @@ struct Gged(T,ulong Rank)
 					{{
 						idx2xyz[n].idx = (i /  _step[n])  % _rawN[n] ;
 						idx2xyz[n]._last = idx2xyz[n]._idx == _until[n] - 1; 
-						idx2xyz[n]._max = _until[n]-_since[n];
+						idx2xyz[n]._len = _until[n]-_since[n];
 						inRange &= _since[n] <=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
 						idx2xyz[n]._idx -= _since[n] ;
 					}}
@@ -213,7 +209,7 @@ struct Gged(T,ulong Rank)
 					{{
 						idx2xyz[n].idx = (i /  _step[n])  % _rawN[n] ;
 						idx2xyz[n]._last = idx2xyz[n]._idx == _until[n] - 1; 
-						idx2xyz[n]._max = _until[n]-_since[n];
+						idx2xyz[n]._len = _until[n]-_since[n];
 						inRange &= _since[n] <=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
 						idx2xyz[n]._idx -= _since[n] ;
 					}}
@@ -257,7 +253,7 @@ struct Gged(T,ulong Rank)
 			static foreach(n ; 0..Rank)
 			{{
 				idx2xyz[n]._idx = (i /  _step[n])  % _rawN[n];
-				idx2xyz[n]._max = _until[n]-_since[n];
+				idx2xyz[n]._len = _until[n]-_since[n];
 				inRange &= _since[n]<=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
 				idx2xyz[n]._idx -= _since[n] ;
 			}}
@@ -279,7 +275,7 @@ struct Gged(T,ulong Rank)
 			static foreach(n ; 0..Rank)
 			{{
 				idx2xyz[n]._idx = (i /  _step[n])  % _rawN[n];
-				idx2xyz[n]._max = _until[n]-_since[n];
+				idx2xyz[n]._len = _until[n]-_since[n];
 				inRange &= _since[n]<=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
 				idx2xyz[n]._idx -= _since[n] ;
 			}}
@@ -463,10 +459,14 @@ struct Index
 {
 	ulong _idx =0;
 	alias _idx this;
-	ulong _max =0;
+	ulong _len =0;
 	const ulong max()
 	{
-		return _max;
+		return _len-1;
+	}
+	const ulong len()
+	{
+		return _len;
 	}
 	this(ulong f)
 	{
@@ -508,9 +508,18 @@ struct SerialIndex
 	{
 		_idx = cast(ulong)f;
 	}
+	const ulong max()
+	{
+		return _len-1;
+	}
+	const ulong len()
+	{
+		return _len;
+	}
+	
 	ulong _idx = ulong.max;
 	alias _idx this;
-	ulong _max;
+	ulong _len;
 	void idx(ulong i){
 		_once = i != _idx;
 		_idx = i;
