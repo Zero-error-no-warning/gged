@@ -18,11 +18,12 @@ package(ggeD)  string onlyDup(string input,string ignr)
     return ignr != "" ? input.to!(dchar[]).filter!(a=>ignr.count(a)==0).array.sort.uniq.array.to!string :  input.to!(dchar[]).filter!(a=>input.count(a) > 1 ).array.sort.uniq.array.to!string;
 }
 
-class Einsum
+class Einsum(Flag!"Parallel" para = No.Parallel)
 {
+
     static auto opBinary(string op,T)(lazy T rhs) if(op == "|")
     {
-        auto result = rhs.eval;
+        auto result = rhs.eval!para;
         static if(typeof(result).EXP.length == 0)
             return result._m[0][0];
         else
@@ -36,7 +37,7 @@ class Einsum
             static auto opBinary(string op,T)(lazy T rhs) if(op == "|")
             {
                 alias type = TemplateOf!T;
-                auto result = type!(Ignr~TemplateArgsOf!T[0],TemplateArgsOf!T[1..$])(rhs.tupleof).eval;
+                auto result = type!(Ignr~TemplateArgsOf!T[0],TemplateArgsOf!T[1..$])(rhs.tupleof).eval!para;
                 static if(typeof(result).EXP.length == 0)
                     return result._m[0][0];
                 else
@@ -85,16 +86,16 @@ struct BroadCast(string Ignr,alias f,T...) if(T.length %2 == 1)
     }
 
     alias fun = unaryFun!f;
-    auto eval()
+    auto eval(Flag!"Parallel" para = No.Parallel)()
     {
         alias type = TemplateOf!(T[0]);
-        auto tmp = type!(Ignr,TemplateArgsOf!(T[0])[1..$])(_m.tupleof).eval;
+        auto tmp = type!(Ignr,TemplateArgsOf!(T[0])[1..$])(_m.tupleof).eval!para;
         auto result = typeof(tmp)(tmp._m[0].dup);
         foreach(ref e ; result._m[0].Elemental)
         {
             e = fun(e);
         }
-        return mixin(multireturn).eval;
+        return mixin(multireturn).eval!para;
     }
 
     auto opBinary(string op,X)(X rhs_) if(__traits(hasMember,X,"eval") && (op == "+" || op == "-"))
@@ -139,7 +140,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
     package(ggeD) alias TYPES =  X;
     package(ggeD) alias EXP = Alias!Exp;
     static if(Exp=="")
-        private auto eval(){
+        private auto eval(Flag!"Parallel" para = No.Parallel)(){
             return this;
         }
     else{
@@ -157,7 +158,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
 
         alias T =  myCommonType!(staticMap!(getTYPE,X));
         string result;
-        result ~= "private auto eval(){ // "~ Exp~"->"~ unq ~ "\n";
+        result ~= "private auto eval(Flag!`Parallel` para = No.Parallel)(){ // "~ Exp~"->"~ unq ~ "\n";
         if(Exp == unq)
         {
             result ~= "return this;\n}";
@@ -193,7 +194,7 @@ package(ggeD)  struct TensorIndexed(string Ignr,string Exp,X...)
                 else static if(is(T==struct)) result~="newgged[ui] = T(0);\n";
                 else static if(is(T==class))  result~="newgged[ui] = new T(0);\n";
             result ~= "}\n";
-             foreach(i,c;iall)
+            foreach(i,c;iall)
             {
                 auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
                 result ~= "foreach(r_" ~ i.to!string~"; 0.."~"_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"])\n";
@@ -306,18 +307,18 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
     {
         return typeof(this)( mixin("lhs"~ op~"_m[0]"),mixin("lhs"~op~"_m[1]"));
     }
-    auto eval()
+    auto eval(Flag!"Parallel" para = No.Parallel)()
     {
         alias type1 = TemplateOf!A;
         alias type2 = TemplateOf!B;
-        auto lhs = type1!(Ignr~TemplateArgsOf!A[0],TemplateArgsOf!A[1..$])(_m[0]._m).eval;
-        auto rhs = type2!(Ignr~TemplateArgsOf!B[0],TemplateArgsOf!B[1..$])(_m[1]._m).eval;
+        auto lhs = type1!(Ignr~TemplateArgsOf!A[0],TemplateArgsOf!A[1..$])(_m[0]._m).eval!para;
+        auto rhs = type2!(Ignr~TemplateArgsOf!B[0],TemplateArgsOf!B[1..$])(_m[1]._m).eval!para;
 
         // static assert(TemplateArgsOf!(typeof(lhs))[0].to!(dchar[]).sort.array == TemplateArgsOf!(typeof(rhs))[0].to!(dchar[]).sort.array );
         static if(lhs.EXP.onlyUniq(Ignr).to!(dchar[]).sort == rhs.EXP.onlyUniq(Ignr).to!(dchar[]).sort)
         {
             // pragma(msg,genEvalAdd(lhs.EXP,rhs.EXP,op,Ignr));
-            mixin(genEvalAdd(lhs.EXP,rhs.EXP,op,Ignr));
+            mixin(genEvalAdd(lhs.EXP,rhs.EXP,op,Ignr,para));
         }
         else
         {
@@ -325,7 +326,7 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
             return lhs; // dummy return;
         }
     }
-    private static string genEvalAdd(string exp1,string exp2,string op,string ignr)
+    private static string genEvalAdd(string exp1,string exp2,string op,string ignr,Flag!"Parallel" para = No.Parallel)
     {
         string[] idx = [exp1]; 
         // string unq = idx.join.to!(dchar[]).sort.uniq.array.to!string;   // ijk
@@ -341,11 +342,17 @@ package(ggeD) struct TensorTree(string Ignr="",string op,X...) if(X.length == 2)
             }
             result ~= ");\n";
 
+            // foreach(i,c;unq)
+            // {
+            //     auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
+            //     result ~= "foreach(r_" ~ i.to!string~"; 0.."~ (r.front == 1 ? "rhs." : "lhs.") ~"_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"])\n";
+            // }
+            result ~= "foreach(";
             foreach(i,c;unq)
             {
-                auto r = iota(idx.length).filter!(a=>idx[a].countUntil(c) >= 0);
-                result ~= "foreach(r_" ~ i.to!string~"; 0.."~ (r.front == 1 ? "rhs." : "lhs.") ~"_m["~ r.front.to!string ~"].shape[" ~ r.map!(a=>idx[a].countUntil(c)).front.to!string ~"])\n";
+                result ~= "r_" ~ i.to!string~",";
             }
+            result ~="; result" ~ (para ? "" : ".Serial") ~ ")\n";
             result ~= "{\n";
             result ~= "result[";
             foreach(c;unq)
