@@ -27,7 +27,7 @@ class Einsum(Flag!"Parallel" para = No.Parallel)
         static if(typeof(result).EXP.length == 0)
             return result._m[0][0];
         else
-            return Tensor!(result.MainGG)(result._m[0]);
+            return Tensor!(result.MainGG.TYPE,result.MainGG.RANK)(result._m[0]);
     }
 
     static auto opDispatch(string Ignr)()
@@ -41,7 +41,7 @@ class Einsum(Flag!"Parallel" para = No.Parallel)
                 static if(typeof(result).EXP.length == 0)
                     return result._m[0][0];
                 else
-                    return Tensor!(result.MainGG)(result._m[0]);
+                    return Tensor!(result.MainGG.TYPE,result.MainGG.RANK)(result._m[0]);
             }
         };
     }

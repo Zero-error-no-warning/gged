@@ -18,7 +18,7 @@ import ggeD.einsum;
 ///   N = shape of tensor
 auto tensor(T,X...)(X N) if(allSatisfy!(isIndex,X))
 {
-    return Tensor!(Gged!(T,X.length))(gged!(T,X)(N));
+    return Tensor!(T,X.length)(gged!(T,X)(N));
 }
 
 /// make tensor from array
@@ -27,7 +27,7 @@ auto tensor(T,X...)(X N) if(allSatisfy!(isIndex,X))
 ///   N = shape of tensor
 auto tensor(T,X...)(T[] value,X N) if(allSatisfy!(isIndex,X))
 {
-    return Tensor!(Gged!(T,X.length))(gged!(T,X)(value,N));
+    return Tensor!(T,X.length)(gged!(T,X)(value,N));
 }
 
 /// make tensor from gged array
@@ -36,7 +36,7 @@ auto tensor(T,X...)(T[] value,X N) if(allSatisfy!(isIndex,X))
 ///   N = shape of tensor
 auto tensor(T,ulong Rank)(Gged!(T,Rank) gg)
 {
-    return Tensor!(Gged!(T,Rank))(gg);
+    return Tensor!(T,Rank)(gg);
 }
 
 /// 
@@ -48,11 +48,12 @@ package(ggeD) auto tensor(T)(T gg) if(isBasicType!T)
 }
 
 
-struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
+struct Tensor(T,Rank) // if( __traits(isSame,TemplateOf!(GG) , Gged))
 {
-    GG _gged;
-    private alias T = TemplateArgsOf!GG[0];
-    private alias Rank = Alias!(TemplateArgsOf!GG[1]);
+    alias GG = Gged!(T,Rank);
+    Gged!(T,Rank) _gged;
+    // private alias T = TemplateArgsOf!GG[0];
+    // private alias Rank = Alias!(TemplateArgsOf!GG[1]);
     alias _gged this;
     
     template opDispatch(string idx)
@@ -83,7 +84,7 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
         }
         return tensor(gg);
     }
-    auto opBinary(string op,R)(Tensor!(Gged!(R,Rank)) rhs) if((isOp(op[0]) || isOpPlusMinus(op)) && (is(myCommonType!(T,R) == T) || is(myCommonType!(T,R) == R )))
+    auto opBinary(string op,R)(Tensor!(R,Rank) rhs) if((isOp(op[0]) || isOpPlusMinus(op)) && (is(myCommonType!(T,R) == T) || is(myCommonType!(T,R) == R )))
     {
         auto gg = Gged!(myCommonType!(T,R),Rank)(_gged.shape);
         foreach(a;gg)
@@ -146,7 +147,7 @@ struct Tensor(GG) if( __traits(isSame,TemplateOf!(GG) , Gged))
     }
     else
     {
-        size_t[2] opSlice(size_t dim,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
+        long[2] opSlice(size_t dim,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
         {
             return [start, end];
         }

@@ -65,7 +65,7 @@ struct Gged(T,ulong Rank)
 	T[] elements()
 	{
 		return _array.indexed(iota(_AllLength).filter!((i){
-			Repeat!(Rank,size_t) idx2xyz;
+			Repeat!(Rank,long) idx2xyz;
 			bool inRange = true;
 			static foreach(n ; 0..Rank)
 			{{
@@ -227,7 +227,7 @@ struct Gged(T,ulong Rank)
 			{
 				foreach(i,ref elem;parallel(_array))
 				{
-					Repeat!(Rank,size_t) idx2xyz;
+					Repeat!(Rank,long) idx2xyz;
 					bool inRange = true;
 					static foreach(n ; 0..Rank)
 					{{
@@ -288,6 +288,7 @@ struct Gged(T,ulong Rank)
 		ulong n = 0;
 		static foreach(i; 0 .. Rank)
 		{{
+			assert(0<=arg[i] && arg[i]<shape[i],"range violation");
 			n += (_since[i] +  arg[i])*_step[i];
 		}}
 		return _array[n];
@@ -297,6 +298,7 @@ struct Gged(T,ulong Rank)
 		ulong n = 0;
 		static foreach(i; 0 .. Rank)
 		{{
+			assert(0<=arg[i] && arg[i]<shape[i],"range violation");
 			n += (_since[i] +  arg[i])*_step[i];
 		}}
 		return _array[n];
@@ -331,7 +333,7 @@ struct Gged(T,ulong Rank)
 	}
 	else
 	{
-		size_t[2] opSlice(size_t dim,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
+		long[2] opSlice(size_t dim,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
 		{
 			return [start, end];
 		}
@@ -368,9 +370,9 @@ struct Gged(T,ulong Rank)
 			{
 				return new subGGeD!(T,Rank,X)(realthis,idx);
 			}
-			auto opIndex(size_t[2] se)
+			auto opIndex(long[2] se)
 			{
-				return new subGGeD!(T,Rank,size_t[2])(realthis,se);
+				return new subGGeD!(T,Rank,long[2])(realthis,se);
 			}
 			scope opIndex(X...)(X idx) 
 			{
@@ -383,7 +385,7 @@ struct Gged(T,ulong Rank)
 					return new subGGeD!(T,Rank,member)(realthis);
 				}
 			}
-			size_t[2] opSlice(size_t rank,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
+			long[2] opSlice(size_t rank,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
 			{
 				return [start, end];
 			}
@@ -407,7 +409,7 @@ class subGGeD(T,ulong Rank,N...)
 {
 	Gged!(T,Rank) _gged;
 	alias _gged this;
-	static if(N.length > 1 || is(N[0] == size_t[2]))
+	static if(N.length > 1 || is(N[0] == long[2]))
 	{
 		N _N;
 		this(Gged!(T,Rank) gged_,N N_) 
@@ -415,7 +417,7 @@ class subGGeD(T,ulong Rank,N...)
 			_gged = gged_;
 			_N = N_;
 		}
-		static if(N.length == 1 && is(N[0]== size_t[2]))
+		static if(N.length == 1 && is(N[0]== long[2]))
 		{
 			ref auto opIndex(X...)(X arg) @nogc 
 			{
@@ -453,13 +455,12 @@ class subGGeD(T,ulong Rank,N...)
 	}
 	
 }
-
 package(ggeD) 
 struct Index
 {
-	ulong _idx =0;
+	long _idx =0;
 	alias _idx this;
-	ulong _len =0;
+	private ulong _len =0;
 	const ulong max()
 	{
 		return _len-1;
@@ -468,21 +469,43 @@ struct Index
 	{
 		return _len;
 	}
-	this(ulong f)
+	this(T)(T f)
 	{
-		_idx = f;
-	}
-	this(double f)
-	{
-		_idx = cast(ulong)f;
-	}
-	this(const(double) f)
-	{
-		_idx = cast(ulong)f;
+		_idx = cast(long)f;
 	}
 	auto opAssign(T)(T value)
 	{
-		_idx = cast(ulong)value;
+		_idx = cast(long)value;
+	}
+	Index opUnary(string op)()
+	{
+		auto r = Index(mixin(op~"_idx"));
+		r._len = _len;
+		return r;
+	}
+	Index opBinary(string op,T)(T value)
+	{
+		auto r = Index(mixin("_idx"~op~"value"));
+		r._len = _len;
+		return r;
+	}
+	Index opBinaryRight(string op,T)(T value)
+	{
+		auto r = Index(mixin("value"~op~"_idx"));
+		r._len = _len;
+		return r;
+	}
+	Index clamp(T)(T value)
+	{
+		auto r = Index(value < 0 ? 0 : value > max ? max : value);
+		r._len = _len;
+		return r;
+	}
+	Index loop(T)(T value)
+	{
+		auto r = Index(value < 0 ? _len+value : value > max ? value-_len : value);
+		r._len = _len;
+		return r;
 	}
 }
 
@@ -496,17 +519,9 @@ bool isIndex(X)(){
 package(ggeD) 
 struct SerialIndex
 {
-	this(ulong f)
+	this(T)(T f)
 	{
-		_idx = f;
-	}
-	this(double f)
-	{
-		_idx = cast(ulong)f;
-	}
-	this(const(double) f)
-	{
-		_idx = cast(ulong)f;
+		_idx = cast(long)f;
 	}
 	const ulong max()
 	{
@@ -517,9 +532,9 @@ struct SerialIndex
 		return _len;
 	}
 	
-	ulong _idx = ulong.max;
+	long _idx = long.max;
 	alias _idx this;
-	ulong _len;
+	private ulong _len;
 	void idx(ulong i){
 		_once = i != _idx;
 		_idx = i;
@@ -537,5 +552,23 @@ struct SerialIndex
 	auto opAssign(T)(T value)
 	{
 		_idx = cast(ulong)value;
+	}
+	Index opUnary(string op)()
+	{
+		auto r = Index(mixin(op~"_idx"));
+		r._len = _len;
+		return r;
+	}
+	Index opBinary(string op,T)(T value)
+	{
+		auto r = Index(mixin("_idx"~op~"value"));
+		r._len = _len;
+		return r;
+	}
+	Index opBinaryRight(string op,T)(T value)
+	{
+		auto r = Index(mixin("value"~op~"_idx"));
+		r._len = _len;
+		return r;
 	}
 }
