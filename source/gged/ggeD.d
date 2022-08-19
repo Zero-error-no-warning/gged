@@ -6,7 +6,7 @@ https://opensource.org/licenses/mit-license.php
 
 module ggeD.ggeD;
 import std;
-public import ggeD.vec;
+public import ggeD.indices;
 
 /// create empty gged array 
 /// Params:
@@ -87,8 +87,8 @@ struct Gged(T,ulong Rank)
 	private immutable ulong _AllLength;
 	private immutable ulong[Rank] _step;
 	private immutable ulong[Rank] _rawN;
-	private immutable ulong[Rank] _since;
-	private immutable sulong[Rank] _until;
+	private ulong[Rank] _since;
+	private ulong[Rank] _until;
 	TaskPool customPool;
 
 	/// 
@@ -195,9 +195,9 @@ struct Gged(T,ulong Rank)
 				}
 				return 1;
 			}
-			static if(Rank>1)  int opApply(int delegate(Vec!(Rank,SerialIndex)) fun) 
+			static if(Rank>1)  int opApply(int delegate(Indices!(Rank,SerialIndex)) fun) 
 			{
-				scope Vec!(Rank,SerialIndex) idx2xyz;
+				scope Indices!(Rank,SerialIndex) idx2xyz;
 				static foreach(n ; 0..Rank)
 				{{
 					idx2xyz[n] = SerialIndex();
@@ -266,9 +266,9 @@ struct Gged(T,ulong Rank)
 		return 1;
     }
 
-    static if(Rank>1) int opApply(int delegate(Vec!(Rank,Index)) fun) 
+    static if(Rank>1) int opApply(int delegate(Indices!(Rank,Index)) fun) 
     {
-		Vec!(Rank,Index) idx2xyz;
+		Indices!(Rank,Index) idx2xyz;
 		foreach(i; (iota(_AllLength)))
 		{
 			bool inRange = true;
@@ -283,7 +283,7 @@ struct Gged(T,ulong Rank)
 		}
 		return 1;
     }
-	ref T opIndex(X)(Vec!(Rank,X) arg) @nogc if(isIndex!X)
+	ref T opIndex(X)(Indices!(Rank,X) arg) 
 	{
 		ulong n = 0;
 		static foreach(i; 0 .. Rank)
@@ -366,7 +366,7 @@ struct Gged(T,ulong Rank)
 		alias realthis = this;
 		return new class {
 			
-			auto opIndex(X)(Vec!(Rank,X) idx) @nogc
+			auto opIndex(X)(Indices!(Rank,X) idx) @nogc
 			{
 				return new subGGeD!(T,Rank,X)(realthis,idx);
 			}
@@ -430,7 +430,7 @@ class subGGeD(T,ulong Rank,N...)
 			{
 				return _gged[arg][_N];
 			}
-			ref auto opIndex(X)(Vec!(Rank,X) arg) @nogc 
+			ref auto opIndex(X)(Indices!(Rank,X) arg) @nogc 
 			{
 				return _gged[arg][_N];
 			}
@@ -448,127 +448,10 @@ class subGGeD(T,ulong Rank,N...)
 		{
 			return _gged[arg].opDispatch!(_N);
 		}
-		ref auto opIndex(X)(Vec!(Rank,X) arg) @nogc 
+		ref auto opIndex(X)(Indices!(Rank,X) arg) @nogc 
 		{
 			return _gged[arg].opDispatch!(_N);
 		}
 	}
 	
-}
-package(ggeD) 
-struct Index
-{
-	long _idx =0;
-	alias _idx this;
-	private ulong _len =0;
-	const ulong max()
-	{
-		return _len-1;
-	}
-	const ulong len()
-	{
-		return _len;
-	}
-	this(T)(T f)
-	{
-		_idx = cast(long)f;
-	}
-	auto opAssign(T)(T value)
-	{
-		_idx = cast(long)value;
-	}
-	Index opUnary(string op)()
-	{
-		auto r = Index(mixin(op~"_idx"));
-		r._len = _len;
-		return r;
-	}
-	Index opBinary(string op,T)(T value)
-	{
-		auto r = Index(mixin("_idx"~op~"value"));
-		r._len = _len;
-		return r;
-	}
-	Index opBinaryRight(string op,T)(T value)
-	{
-		auto r = Index(mixin("value"~op~"_idx"));
-		r._len = _len;
-		return r;
-	}
-	Index clamp(T)(T value)
-	{
-		auto r = Index(value < 0 ? 0 : value > max ? max : value);
-		r._len = _len;
-		return r;
-	}
-	Index loop(T)(T value)
-	{
-		auto r = Index(value < 0 ? _len+value : value > max ? value-_len : value);
-		r._len = _len;
-		return r;
-	}
-}
-
-bool isIndex(X)(){
-	static if(!__traits(isTemplate,X)) 
-		return is(X == Index) ||  is(X == SerialIndex) || isIntegral!X ;
-	else
-		return  __traits(isSame,TemplateOf!X ,Vec) && isIntegral!((TemplateArgsOf!X)[1]);
-} 
-
-package(ggeD) 
-struct SerialIndex
-{
-	this(T)(T f)
-	{
-		_idx = cast(long)f;
-	}
-	const ulong max()
-	{
-		return _len-1;
-	}
-	const ulong len()
-	{
-		return _len;
-	}
-	
-	long _idx = long.max;
-	alias _idx this;
-	private ulong _len;
-	void idx(ulong i){
-		_once = i != _idx;
-		_idx = i;
-	}
-	bool _once = true;
-	bool _last = false;
-	const bool once()
-	{
-		return _once;
-	}			
-	const bool last()
-	{
-		return _last;
-	}			
-	auto opAssign(T)(T value)
-	{
-		_idx = cast(ulong)value;
-	}
-	Index opUnary(string op)()
-	{
-		auto r = Index(mixin(op~"_idx"));
-		r._len = _len;
-		return r;
-	}
-	Index opBinary(string op,T)(T value)
-	{
-		auto r = Index(mixin("_idx"~op~"value"));
-		r._len = _len;
-		return r;
-	}
-	Index opBinaryRight(string op,T)(T value)
-	{
-		auto r = Index(mixin("value"~op~"_idx"));
-		r._len = _len;
-		return r;
-	}
 }
