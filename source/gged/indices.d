@@ -67,10 +67,24 @@ struct Indices(ulong Dim,Idx) if (is(Idx == Index) || is(Idx == SerialIndex))
         }}
 		return result;
     }
+    auto loop(){
+        auto result =  Indices!(Dim,Idx)(_value);
+        static foreach(d; 0.. Dim){{
+            result._value[d] =result._value[d].loop();
+        }}
+		return result;
+    }
     auto clamp(T)(Indices!(Dim,T) idx){
         auto result =  Indices!(Dim,Idx)(_value);
         static foreach(d; 0.. Dim){{
             result._value[d] = result._value[d].clamp(idx._value[d]);
+        }}
+		return result;
+    }
+    auto clamp(){
+        auto result =  Indices!(Dim,Idx)(_value);
+        static foreach(d; 0.. Dim){{
+            result._value[d] = result._value[d].clamp();
         }}
 		return result;
     }
@@ -168,15 +182,27 @@ struct SerialIndex
 		r._len = _len;
 		return r;
 	}
-	SerialIndex clamp(T)(T value)
+	SerialIndex clamp(Idx)(Idx value) if (is(Idx == Index) || is(Idx == SerialIndex))
 	{
-		auto r = SerialIndex(value < 0 ? 0 : value > max ? max : value);
+		auto r = SerialIndex(_idx < 0 ? 0 : _idx > value.max ? value.max : _idx);
 		r._len = _len;
 		return r;
 	}
-	SerialIndex loop(T)(T value)
+	SerialIndex loop(Idx)(Idx value) if (is(Idx == Index) || is(Idx == SerialIndex))
 	{
-		auto r = SerialIndex(value < 0 ? _len+value : value > max ? value-_len : value);
+		auto r = SerialIndex(_idx < 0 ? value._len+_idx : _idx > value.max ? _idx-value._len : _idx);
+		r._len = _len;
+		return r;
+	}
+	SerialIndex clamp()
+	{
+		auto r = SerialIndex(_idx < 0 ? 0 : _idx > max ? max : _idx);
+		r._len = _len;
+		return r;
+	}
+	SerialIndex loop()
+	{
+		auto r = SerialIndex(_idx < 0 ? _len+_idx : _idx > max ? _idx-_len : _idx);
 		r._len = _len;
 		return r;
 	}
@@ -223,15 +249,27 @@ struct Index
 		r._len = _len;
 		return r;
 	}
-	Index clamp(T)(T value)
+	Index clamp(Idx)(Idx value) if (is(Idx == Index) || is(Idx == SerialIndex))
 	{
-		auto r = Index(value < 0 ? 0 : value > max ? max : value);
+		auto r = Index(_idx < 0 ? 0 : _idx > value.max ? value.max : _idx);
 		r._len = _len;
 		return r;
 	}
-	Index loop(T)(T value)
+	Index loop(Idx)(Idx value) if (is(Idx == Index) || is(Idx == SerialIndex))
 	{
-		auto r = Index(value < 0 ? _len+value : value > max ? value-_len : value);
+		auto r = Index(value < 0 ? value._len+value : value > value.max ? value-value._len : value);
+		r._len = _len;
+		return r;
+	}
+	Index clamp()
+	{
+		auto r = Index(_idx < 0 ? 0 : _idx > max ? max : _idx);
+		r._len = _len;
+		return r;
+	}
+	Index loop()
+	{
+		auto r = Index(_idx < 0 ? _len+_idx : _idx > max ? _idx-_len : _idx);
 		r._len = _len;
 		return r;
 	}
