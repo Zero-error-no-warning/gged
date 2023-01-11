@@ -3,455 +3,133 @@ Copyright (c) 2022 Zenw
 Released under the MIT license
 https://opensource.org/licenses/mit-license.php
 */
+/*
+Copyright (c) 2022 Zenw
+Released under the MIT license
+https://opensource.org/licenses/mit-license.php
+*/
 
 module ggeD.ggeD;
 import std;
-public import ggeD.indices;
+public import ggeD.indexVec;
+import mir.ndslice;
 
-/// create empty gged array 
-/// Params:
-///   N = shape of array
-auto gged(T,X...)(X N) if(allSatisfy!(isIndex,X))
+public import ggeD.einsum;
+
+
+
+auto gged(T,Args...)(T[] value,Args xyz)
 {
-	return Gged!(T,X.length)(N);
-} 
-/// 
-/// Params:
-///   array = source 1-dim array.
-///   N =  shape of array
-auto gged(T,X...)(T[] array,X N)  if(allSatisfy!(isIndex,X))
-{
-	return Gged!(T,X.length)(array,N);
-}
-
-/// 
-/// Params:
-///   N =  shape of array
-auto gged(T,size_t X,L)(L[X] N) if(isIndex!L)
-{
-	return Gged!(T,X)(N);
-}
-
-/// 
-/// Params:
-///   array = source 1-dim array.
-///   N =  shape of array
-auto gged(T,size_t X,L)(T[] array,L[X] N) if(isIndex!L)
-{
-	return Gged!(T,X)(array,N);
-}
-
-unittest
-{
-	auto raw = iota(60.array);
-	auto a = gged(raw,[1,2,3]);
-	assert(a.shape == [1,2,3]);
-	ulong i = 0;
-	foreach(ijk;a.Serial)
-	{
-		assert(a[ijk] == raw[i]);
-		i++;
-	}
-}
-/// Gged class
-struct Gged(T,ulong Rank)
-{
-	alias TYPE = T;
-	alias RANK = Alias!(Rank);
-	private T[] _array;
-
-	/// 
-	/// Returns: elements as 1-dim array.
-	T[] elements()
-	{
-		return _array.indexed(iota(_AllLength).filter!((i){
-			Repeat!(Rank,long) idx2xyz;
-			bool inRange = true;
-			static foreach(n ; 0..Rank)
-			{{
-				idx2xyz[n] = (i /  _step[n])  % _rawN[n] ;
-				inRange &= _since[n] <=idx2xyz[n]&& idx2xyz[n]<_until[n];
-			}}
-			return inRange;
-		})).array;
-	}
-
-	/// 
-	/// Returns: dupplication of gged.
-	typeof(this) dup(Flag!"shape" OnlyShape = No.shape)()
-	{
-		if(OnlyShape) return Gged!(T,Rank)(_rawN.dup);
-		else return Gged!(T,Rank)(_array.dup,_rawN.dup);
-	}
-
-	private immutable ulong _AllLength;
-	private immutable ulong[Rank] _step;
-	private immutable ulong[Rank] _rawN;
-	private ulong[Rank] _since;
-	private ulong[Rank] _until;
-	TaskPool customPool;
-
-	/// 
-	/// Returns: shape of gged array.
-	ulong[Rank] shape()
-	{
-		ulong[Rank] result;
-		foreach(i,ref r;result)
-		{
-			r = _until[i]-_since[i];
-		}
-		return result;
-	}
-
-	auto reShape(R)(ulong[R] shape)
-	{
-		return Gged!(TYPE,R)(_array,shape_);
-	}
-
-		
-	/// default constructor is disable
-	@disable this();
-		
-
-	/// 
-	/// Params:
-	///   array = source 1-dim array.
-	this(T[] array,ulong[] N...) 
-	{
-		assert(N.length == Rank,format("number of args must be same as Rank: %s , %s" , N, Rank));
-		_rawN = cast(immutable)N;
-		_AllLength = N.reduce!((a,b)=>a*b);
-		_array = array;
-
-		ulong[Rank] step;
-		ulong n = 1;
-
-		step[0] = 1;
-		static foreach(i;1..Rank)
-		{{
-			n *= _rawN[i-1];
-			step[i] = n;
-		}}
-		static foreach(i;0..Rank)
-		{{
-			_until[i] = _rawN[i];
-			_since[i] = 0;
-		}}
-		_step = cast(immutable)(step);
-		assert(_AllLength == elements.length, "array length and shape are not corresponded");
-	}
-
-	/// 
-	/// Params:
-	///   array = source 1-dim array.
-	this(ulong[] N...) 
-	{
-		assert(N.length == Rank,format("number of args must be same as Rank: %s , %s" , N, Rank));
-		_rawN = cast(immutable)N;
-		_AllLength = N.reduce!((a,b)=>a*b);
-		_array = new T[](_AllLength);
-
-		ulong[Rank] step;
-		ulong n = 1;
-
-		step[0] = 1;
-		static foreach(i;1..Rank)
-		{{
-			n *= _rawN[i-1];
-			step[i] = n;
-		}}
-		static foreach(i;0..Rank)
-		{{
-			_until[i] = _rawN[i];
-			_since[i] = 0;
-		}}
-		_step = cast(immutable)(step);
-	}
-
-	scope auto Serial()
-	{
-		alias TypeSerialIndex = Repeat!(Rank,SerialIndex);
-		return new class 
-		{
-			int opApply(int delegate(TypeSerialIndex) fun) 
-			{
-				scope AliasSeq!TypeSerialIndex idx2xyz;
-				static foreach(n ; 0..Rank)
-				{{
-					idx2xyz[n] = SerialIndex();
-				}}
-				foreach(i; iota(_AllLength))
-				{
-					bool inRange = true;
-					static foreach(n ; 0..Rank)
-					{{
-						idx2xyz[n].idx = (i /  _step[n])  % _rawN[n] ;
-						idx2xyz[n]._last = idx2xyz[n]._idx == _until[n] - 1; 
-						idx2xyz[n]._len = _until[n]-_since[n];
-						inRange &= _since[n] <=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
-						idx2xyz[n]._idx -= _since[n] ;
-					}}
-					if(inRange) fun(idx2xyz);
-				}
-				return 1;
-			}
-			static if(Rank>1)  int opApply(int delegate(Indices!(Rank,SerialIndex)) fun) 
-			{
-				scope Indices!(Rank,SerialIndex) idx2xyz;
-				static foreach(n ; 0..Rank)
-				{{
-					idx2xyz[n] = SerialIndex();
-				}}
-				foreach(i; iota(_AllLength))
-				{
-					bool inRange = true;
-					static foreach(n ; 0..Rank)
-					{{
-						idx2xyz[n].idx = (i /  _step[n])  % _rawN[n] ;
-						idx2xyz[n]._last = idx2xyz[n]._idx == _until[n] - 1; 
-						idx2xyz[n]._len = _until[n]-_since[n];
-						inRange &= _since[n] <=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
-						idx2xyz[n]._idx -= _since[n] ;
-					}}
-					if(inRange) fun(idx2xyz);
-				}
-				return 1;
-			}
-		};
-	}
-	scope Elemental()
-	{
-		return new class 
-		{
-			int opApply(int delegate(ref T) fun) 
-			{
-				foreach(i,ref elem;parallel(_array))
-				{
-					Repeat!(Rank,long) idx2xyz;
-					bool inRange = true;
-					static foreach(n ; 0..Rank)
-					{{
-						idx2xyz[n] = (i /  _step[n])  % _rawN[n] ;
-						inRange &= _since[n] <=idx2xyz[n]&& idx2xyz[n]<_until[n];
-					}}
-					if(inRange) fun(elem);
-				}
-				return 1;
-			}
-		};
-	}
-    int opApply(int delegate(Repeat!(Rank,Index)) fun) 
+    auto gg = gged!T(xyz);
+    ulong idx = 0;
+    foreach(ijk;gg.index)
     {
-		// static foreach(n ; 0..Rank)
-		// {{
-		// 	idx2xyz[n] = Index();
-		// }}
-		foreach(i; parallel(iota(_AllLength)))
-		{
-			Repeat!(Rank,Index) idx2xyz;
-			bool inRange = true;
-			static foreach(n ; 0..Rank)
-			{{
-				idx2xyz[n]._idx = (i /  _step[n])  % _rawN[n];
-				idx2xyz[n]._len = _until[n]-_since[n];
-				inRange &= _since[n]<=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
-				idx2xyz[n]._idx -= _since[n] ;
-			}}
-			if(inRange) fun(idx2xyz);
-			else
-			{
-				
-			}
-		}
-		return 1;
+        gg[ijk] = value[idx];
+        idx++;
     }
-
-    static if(Rank>1) int opApply(int delegate(Indices!(Rank,Index)) fun) 
+    return gg;
+}
+auto gged(T,N)(T[] value,ulong[N] xyz)  
+{
+    auto gg = gged!T(xyz);
+    ulong idx = 0;
+    foreach(ijk;gg.index)
     {
-		Indices!(Rank,Index) idx2xyz;
-		foreach(i; (iota(_AllLength)))
-		{
-			bool inRange = true;
-			static foreach(n ; 0..Rank)
-			{{
-				idx2xyz[n]._idx = (i /  _step[n])  % _rawN[n];
-				idx2xyz[n]._len = _until[n]-_since[n];
-				inRange &= _since[n]<=idx2xyz[n]._idx && idx2xyz[n]._idx<_until[n];
-				idx2xyz[n]._idx -= _since[n] ;
-			}}
-			if(inRange) fun(idx2xyz);
-		}
-		return 1;
+        gg[ijk] = value[idx];
+        idx++;
     }
-	ref T opIndex(X)(Indices!(Rank,X) arg) 
-	{
-		ulong n = 0;
-		static foreach(i; 0 .. Rank)
-		{{
-			assert(0<=arg[i] && arg[i]<shape[i],"range violation");
-			n += (_since[i] +  arg[i])*_step[i];
-		}}
-		return _array[n];
-	}
-	ref T opIndex(X...)(X arg) @nogc if(allSatisfy!(isIndex,X))
-	{
-		ulong n = 0;
-		static foreach(i; 0 .. Rank)
-		{{
-			assert(0<=arg[i] && arg[i]<shape[i],"range violation");
-			n += (_since[i] +  arg[i])*_step[i];
-		}}
-		return _array[n];
-	}
-	auto opIndex(X...)(X arg) if((X.length > 1 &&!allSatisfy!(isIndex,X))|| (X.length==1 && isArray!(X) ) )
-	{
-		auto g = gged!T(_array,shape);
-		static foreach(i; 0 .. X.length)
-		{{
-			static if(isArray!(typeof(arg[i])))
-			{
-				g._since[i] = arg[i][0];
-				g._until[i] = arg[i][1];
-			}
-			else
-			{
-				g._since[i] = arg[i];
-				g._until[i] = arg[i]+1;
-			}
-		}}
-		return g;
-	}
-	static if(Rank == 1)
-	{
-		auto opSlice(X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
-		{
-			auto g = gged!T(_array,shape);
-			g._since[0] = start;
-			g._until[0] = end;
-			return g;
-		}
-	}
-	else
-	{
-		long[2] opSlice(size_t dim,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
-		{
-			return [start, end];
-		}
-	}
-
-
-	size_t opDollar(ulong rank)()
-	{
-		return _rawN[rank];
-	}
-	
-
-	auto opSliceAssign(T)(T value)
-	{
-		_array[] = value;
-	}
-	
-	auto opSliceAssign(Gged!(T,Rank) value) 
-	in
-	{
-		assert(value._rawN[] == _rawN[]);
-	}do
-	{
-		_array = value._array.dup;
-	}
-
-
-	scope t() 
-	{
-		alias realthis = this;
-		return new class {
-			
-			auto opIndex(X)(Indices!(Rank,X) idx) @nogc
-			{
-				return new subGGeD!(T,Rank,X)(realthis,idx);
-			}
-			auto opIndex(long[2] se)
-			{
-				return new subGGeD!(T,Rank,long[2])(realthis,se);
-			}
-			scope opIndex(X...)(X idx) 
-			{
-				return new subGGeD!(T,Rank,X)(realthis,idx);
-			}
-			static if(__traits(hasMember,T,"opDispatch"))
-			{
-				ref auto opDispatch(string member)()
-				{
-					return new subGGeD!(T,Rank,member)(realthis);
-				}
-			}
-			long[2] opSlice(size_t rank,X,Y)(X start, Y end) if(isIndex!X && isIndex!Y)
-			{
-				return [start, end];
-			}
-			size_t opDollar(ulong rank)()
-			{
-				static if(__traits(hasMember,T,"opDollar"))
-				{
-					return T.opDollar!rank;
-				}
-				else
-				{
-					return _array[0].length;
-				}
-			}
-		};
-	}
+    return gg;
 }
 
-package(ggeD)
-class subGGeD(T,ulong Rank,N...)
+auto gged(T,N)(ulong[N] xyz)  
 {
-	Gged!(T,Rank) _gged;
-	alias _gged this;
-	static if(N.length > 1 || is(N[0] == long[2]))
-	{
-		N _N;
-		this(Gged!(T,Rank) gged_,N N_) 
-		{
-			_gged = gged_;
-			_N = N_;
-		}
-		static if(N.length == 1 && is(N[0]== long[2]))
-		{
-			ref auto opIndex(X...)(X arg) @nogc 
-			{
-				return _gged[arg][_N[0][0] .. _N[0][1]];
-			}
-		}
-		else
-		{
-			ref auto opIndex(X...)(X arg) @nogc 
-			{
-				return _gged[arg][_N];
-			}
-			ref auto opIndex(X)(Indices!(Rank,X) arg) @nogc 
-			{
-				return _gged[arg][_N];
-			}
-		}
-	}
-	else static if(is(typeof(N[0])==string))
-	{
-		enum _N = N[0];
-		this(Gged!(T,Rank) gged_) 
-		{
-			_gged = gged_;
-		}
-		static if( __traits(hasMember,T,"opDispatch"))
-		ref auto opIndex(X...)(X arg) @nogc 
-		{
-			return _gged[arg].opDispatch!(_N);
-		}
-		ref auto opIndex(X)(Indices!(Rank,X) arg) @nogc 
-		{
-			return _gged[arg].opDispatch!(_N);
-		}
-	}
-	
+    return Gged!(T*,Args.length,mir_slice_kind.contiguous)(slice!(T)(xyz));
+}
+auto gged(T,Args...)(Args xyz)  if(allSameType!(Args) && isIntegral!(Args[0]))
+{
+    return Gged!(T*,Args.length,mir_slice_kind.contiguous)(slice!(T)(xyz));
+}
+auto gged(X,ulong Y,SliceKind Z)(Slice!(X,Y,Z) slice_)
+{
+    return Gged!(X,Y, Z)(slice_);
+}
+T gged(T)(T value) if(!__traits(isSame, TemplateOf!(T), Slice))
+{
+    return value;
+}
+
+
+struct Gged(T,ulong RANK, SliceKind kind)
+{
+	import mir.ndslice;
+    alias SliceType = Slice!(T, Rank, kind);
+    SliceType _slice;
+    alias Kind = kind;
+    
+	alias Type = PointerTarget!T;
+	alias TypePointer = T;
+	alias Rank = Alias!(RANK);
+
+    alias _slice this;
+    
+    auto shape() => _slice.shape;
+    
+    alias TypeSerialIndex = Repeat!(Rank,SerialIndex);
+    auto index(){
+        return new class{
+            	int opApply(int delegate(TypeSerialIndex) fun) {
+                	mixin(genLoop);
+            	    return 1;
+    	    }
+            	static if(Rank > 1)
+                    int opApply(int delegate(IndexVec!Rank) fun) {
+                	mixin(genLoop!true);
+            	    return 1;
+    	    }
+        };
+    }
+    auto toString()=>_slice.to!string;
+    static string genLoop(bool vec = false)(){
+        string result;
+        static foreach(idx;0..Rank){
+            result ~= "foreach(_" ~idx.to!string~ ";0 .. _slice.shape["~idx.to!string~"])";
+        }
+        result ~= "fun(";
+       	static if(vec) result ~= "IndexVec!Rank([";
+        static foreach(idx;0..Rank){
+	        result ~= "SerialIndex(_" ~idx.to!string ~",_slice.shape["~idx.to!string~"]),";
+        }
+       	static if(vec) result ~= "])";
+        result ~= ");";
+        return result;
+    }
+    auto opSlice(X,Y)(X start, Y end) if(is(X == SerialIndex) && is(Y == SerialIndex))
+    {
+        return gged(_slice.opSlice(start,end));
+    }
+    auto opSlice(size_t dim,X,Y)(X start, Y end) 
+    {
+        return _slice.opSlice!dim(start,end);
+    }
+    auto opIndex(IndexVec!Rank args){
+        return gged(_slice.opIndex(args.idx.tupleof));
+    }
+    auto opIndex(Args...)(Args args){
+        return gged(_slice.opIndex(args));
+    }
+    auto opIndexAssign(PointerTarget!T value,IndexVec!Rank args){
+        return gged(_slice.opIndexAssign(value,args.idx.tupleof));
+    }
+    auto opIndexAssign(Args...)(PointerTarget!T value,Args args){
+        return gged(_slice.opIndexAssign(value,args));
+    }
+    auto opDollar(ulong dim)(){
+        return _slice.opDollar!dim;
+    }
+    auto opDispatch(string idx)()
+    {
+        static assert(idx.length ==Rank,"index notation length should be same as the tensor Rank");
+        return new Leaf!(idx,typeof(this))(this);
+    }
+        
 }
