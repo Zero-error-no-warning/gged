@@ -1,8 +1,3 @@
-/*
-Copyright (c) 2022 Zenw
-Released under the MIT license
-https://opensource.org/licenses/mit-license.php
-*/
 module ggeD.einsum;
 
 import std;
@@ -22,6 +17,22 @@ class Einsum
         {
             return rhs.eval;
         }
+    }
+    auto opDispatch(string name)()
+    {
+        return new class{
+            auto opBinary(string op,R)(R rhs) if(op == "|")
+            {
+                static if(getIndex!(R,name)[0].length > 0)
+                {
+                    return rhs.eval!name.tensor;
+                }
+                else
+                {
+                    return rhs.eval!name;
+                }
+            }
+        };
     }
 }
 
@@ -215,7 +226,6 @@ class Tree(LHS,RHS,string op,Leafs...)
 
             mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
 
-            pragma(msg,genLoop!(ResultIdx,"This",typeof(This),indexes));
             static if(indexes[0].length > 0)
             {
                 auto leaf = result.opDispatch!(indexes[0]);
@@ -263,7 +273,6 @@ class Tree(LHS,RHS,string op,Leafs...)
                 }
 
                 mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
-                pragma(msg,genLoop!(ResultIdx,"This",typeof(This),indexes));
                 static if(indexes[0].length > 0)
                 {
                     auto leaf = result.opDispatch!(indexes[0]);
@@ -352,6 +361,7 @@ class Leaf(string idx,aTensor)
     {
         tensor = t;
     }
+
     aTensor tensor;
     alias Type = aTensor.Type;
     auto leafs() => [this];
