@@ -18,6 +18,12 @@ unittest
     auto delta = fnTensor((ulong i,ulong j)=>(i==j?1.:0.));
     auto tr2 = Einsum | t1.ij*delta.ij;
     assert(t2r == 12);
+
+    auto applyFunction = Einsum | br!tan(br!atan(t1.ij));
+    assert(applyFunction == t1);
+
+    auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1+t1[0,0..3].j);
+    assert(applyFunction2 == t1);
 }
 
 auto br(alias fun,Args...)(Args args)
@@ -107,9 +113,13 @@ template getIdxList(Leafs...)
         {
             alias getIdxList = getIdxList!(Leafs_);
         }
-        else static if(is(Node == FnTensor!(idx,F),string idx,F))
+        else static if(is(Leafs[0] == FnTensor!(idx,F),string idx,F))
         {
             alias getIdxList = idx;
+        }
+        else static if(is(Leafs[0] == Tree!(LHS,RHS,op,Leafs_) ,LHS,RHS,string op,Leafs_...))
+        {
+            alias getIdxList = getIdxList!Leafs_;
         }
         else 
         {
@@ -183,6 +193,8 @@ template getIndex(Node,string ignr = "")
     {
         alias UNQs = staticMap!(getunq,Leafs);
         alias DMYs = staticMap!(getdmy,Leafs);
+        pragma(msg,join([UNQs,DMYs]).onlyUniq(ignr));
+        pragma(msg,join([UNQs,DMYs]).onlyDummy(ignr));
         alias getIndex = AliasSeq!(join([UNQs,DMYs]).onlyUniq(ignr),join([UNQs,DMYs]).onlyDummy(ignr));
     }
     else static if(is(Node == FnTensor!(idx,F),string idx,F))
@@ -323,15 +335,6 @@ class Tree(LHS,RHS,string op,Leafs...)
         auto rhs =  _rhs.evalDummy!ResultIdx;
         auto This = mixin("lhs"~op~"rhs");
         return This;
-    }
-    static auto once(Args...)(Args args)
-    {
-        bool result = true;
-        static foreach(arg;args)
-        {{
-            result = result && (arg == 0);
-        }}
-        return result;
     }
     static auto genLoop(string ResultIdx="",string This,TypeThis,indexes...)()
     {
@@ -549,6 +552,8 @@ class Func(alias fun,Leafs...)
             auto dummyshape = getShape!(dmmy)([Idxes],This.shapeList);
             auto sumgg = gged!(Type)(dummyshape.tupleof);
         }
+        pragma(msg, Leafs );
+        pragma(msg, Idxes );
         pragma(msg,genLoop!(ignr,uniq,dmmy));
         mixin(genLoop!(ignr,uniq,dmmy));
 
@@ -607,7 +612,7 @@ class Func(alias fun,Leafs...)
         {{ 
             static if(is(Leafs[i] == Tree!(LHS,RHS,op,Leafs_),LHS,RHS,string op,Leafs_...))
             {
-                result ~= getExp!(This~".leafs["~i.to!string~"]",Leafs[i],0) ~ ",";
+                result ~= getExp!(This~".leafs["~i.to!string~"]",Leafs[i],0)[0] ~ ",";
             }
             else static if(is(Leafs[i] == Leaf!(idx,Tns),string idx,Tns))
             {
@@ -641,6 +646,10 @@ class Func(alias fun,Leafs...)
                 shapes ~= leafs[i].shape.dup;
             }
             else static if(is(leaf == Func!(func,Leafs_),alias func,Leafs_...))
+            {
+                shapes ~= leafs[i].shapeList;
+            }
+            else static if(is(leaf == Tree!(LHS,RHS,op,Leafs_),LHS,RHS,string op,Leafs_...))
             {
                 shapes ~= leafs[i].shapeList;
             }
