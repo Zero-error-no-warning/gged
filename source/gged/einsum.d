@@ -3,15 +3,37 @@ module ggeD.einsum;
 import std;
 import ggeD.ggeD;
 
-class br(alias fun)
+
+unittest
 {
-    static:
-    auto opCall(Args...)(Args args)
-    {
-        return new Func!(fun,Args)(args);
-    }
+    auto t1 = iota(9).gged!double(3,3);
+    assert(t1 == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
+    
+    auto tr = Einsum | t1.ii;
+    assert(tr == 12);
+
+    auto transposed = Einsum.ji | t1.ij;
+    assert(transposed == [[0, 3, 6], [1, 4, 7], [2, 5, 8]]);
+
+    auto delta = fnTensor((ulong i,ulong j)=>(i==j?1.:0.));
+    auto tr2 = Einsum | t1.ij*delta.ij;
+    assert(t2r == 12);
 }
 
+auto br(alias fun,Args...)(Args args)
+{
+    return new Func!(fun,Args)(args);
+}
+
+auto fnTensor(F)(F fun) if(isCallable!F)
+{
+    return new class{
+        auto opDispatch(string idx)()
+        {
+            return new FnTensor!(idx,F)(fun);
+        };
+    };
+}
 class Einsum
 {
     static:
@@ -45,7 +67,7 @@ class Einsum
 }
 
 
-// package(ggeD):
+package(ggeD):
 string onlyUniq(string input,string ignr="")
 {
     return ignr != "" ? ignr : input.to!(dchar[]).filter!(a=>input.count(a) == 1).array.to!string;
@@ -84,6 +106,10 @@ template getIdxList(Leafs...)
         else static if(is(Leafs[0] == Func!(func,Leafs_),alias func,Leafs_...))
         {
             alias getIdxList = getIdxList!(Leafs_);
+        }
+        else static if(is(Node == FnTensor!(idx,F),string idx,F))
+        {
+            alias getIdxList = idx;
         }
         else 
         {
@@ -126,35 +152,6 @@ template filterTensors(Leafs...)
         alias filterTensors = AliasSeq!(filterTensors!(Leafs[0]),filterTensors!(Leafs[1..$]));
     }
 }
-template filterTensorsValue(ulong N ,Leafs...)
-{
-    static if(Leafs.length == 1)
-    {
-        static if(is(Leafs[0] == Leaf!(idx,T),string idx,T) || isScalarType!(Leafs[0]))
-        {
-            alias filterTensorsValue = AliasSeq!(N+1,"leafs["~N.to!string~"],");
-        }
-        else static if(is(Leafs[0] == Func!(func,Leafs_),alias func,Leafs_...))
-        {
-            alias r =  filterTensorsValue!(N,Leafs_);
-            alias filterTensorsValue = AliasSeq!(r[0],"leafs["~N.to!string~"]."~r[1]);
-        }
-        else 
-        {
-            alias filterTensorsValue  = AliasSeq!(N,"");
-        }
-    }
-    else static if(Leafs.length == 0)
-    {
-        alias filterTensorsValue = AliasSeq!(N,"");
-    }
-    else
-    {
-        alias zero = filterTensorsValue!(N,Leafs[0]);
-        alias rest = filterTensorsValue!(zero[0],Leafs[1..$]);
-        alias filterTensorsValue = AliasSeq!(rest[0],zero[1] ~rest[1]);
-    }
-}
 template getIndex(Node,string ignr = "")
 {
     template getunq(Leaf)
@@ -188,6 +185,10 @@ template getIndex(Node,string ignr = "")
         alias DMYs = staticMap!(getdmy,Leafs);
         alias getIndex = AliasSeq!(join([UNQs,DMYs]).onlyUniq(ignr),join([UNQs,DMYs]).onlyDummy(ignr));
     }
+    else static if(is(Node == FnTensor!(idx,F),string idx,F))
+    {
+        alias getIndex = AliasSeq!(idx.onlyUniq(ignr),idx.onlyDummy(ignr));
+    }
     else
     {
         alias getIndex = AliasSeq!("","");
@@ -219,6 +220,11 @@ template getExp(string This,Node,ulong N)
         }
         alias getExp = AliasSeq!(text~")",N+1);
         // mixin("alias getExp = AliasSeq!(text"~(Leafs.length).to!string~"[0]~`)`,text"~(Leafs.length).to!string~"[1]);");
+    }
+    else static if(is(Node == FnTensor!(idx,F),string idx,F))
+    {
+        alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+        alias getExp = AliasSeq!(This~".leafs["~N.to!string~"].FUN("~ijk~")",N+1);
     }
     else
     {
@@ -612,6 +618,11 @@ class Func(alias fun,Leafs...)
             {
                 result ~= Leafs[i] .asExp!("leafs["~i.to!string~"]")~",";
             }
+            else static if(is(Leafs[i] == FnTensor!(idx,F),string idx,F))
+            {
+                alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+                result ~= Leafs[i]~".leafs["~i.to!string~"].FUN("~ijk~"),";
+            }
             else
             {
                 result ~= This~".leafs["~i.to!string~"],";
@@ -661,9 +672,38 @@ class Func(alias fun,Leafs...)
     auto opBinaryRight(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return new Tree!(R,typeof(this),op,Leafs_,onlyLeafs!())(this,ohs,ohs.leafs,filterTensorsValue!leafs);
+            return new Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return new Tree!(R,typeof(this),op,R,onlyLeafs!())(ohs,this,ohs,filterTensorsValue!leafs);
+            return new Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
     //TODO: opBinary等を実装すること
+}
+
+class FnTensor(string idx,F)
+{
+    F FUN;
+    this(F)(F fun) if (isCallable!F)
+    {
+        FUN = fun;
+    }
+
+    auto opBinary(string op,R)(R ohs)
+    {
+        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
+            return new Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
+        else
+            return new Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+    }
+    auto opBinaryRight(string op,R)(R ohs)
+    {
+        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
+            return new Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
+        else
+            return new Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
+    }
+    auto shapeList()
+    {
+        ulong[][] shapes;
+        return shapes;
+    }
 }
