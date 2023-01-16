@@ -5,7 +5,7 @@ A ~~ja~~gged array library that saves you from writing nested for statements in 
 ジャグ配列じゃない多次元配列ライブラリです。入れ子にせずループを回すための機能を提供します。
 
 ``` D
-import ggeD.ggeD;
+import ggeD;
 import std;
 void main()
 {
@@ -27,7 +27,7 @@ You can use Einstein summation.
 アインシュタインの縮約記法が使えます。
 
 ``` D
-import ggeD.ggeD;
+import ggeD;
 import std;
 
 void main()

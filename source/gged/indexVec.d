@@ -2,7 +2,7 @@ module ggeD.indexVec;
 import ggeD;
 import std;
 
-
+package(ggeD):
 struct IndexVec(size_t dim)
 {
 	SerialIndex[dim] idx;

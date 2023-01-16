@@ -193,8 +193,8 @@ template getIndex(Node,string ignr = "")
     {
         alias UNQs = staticMap!(getunq,Leafs);
         alias DMYs = staticMap!(getdmy,Leafs);
-        pragma(msg,join([UNQs,DMYs]).onlyUniq(ignr));
-        pragma(msg,join([UNQs,DMYs]).onlyDummy(ignr));
+        // pragma(msg,join([UNQs,DMYs]).onlyUniq(ignr));
+        // pragma(msg,join([UNQs,DMYs]).onlyDummy(ignr));
         alias getIndex = AliasSeq!(join([UNQs,DMYs]).onlyUniq(ignr),join([UNQs,DMYs]).onlyDummy(ignr));
     }
     else static if(is(Node == FnTensor!(idx,F),string idx,F))
@@ -302,10 +302,10 @@ class Tree(LHS,RHS,string op,Leafs...)
                 auto dummyshape = getShape!(indexes[1])([Idxes],This.shapeList);
                 auto sumgg = gged!(Type)(dummyshape.tupleof);
             }
-            pragma(msg,Leafs);
-        pragma(msg, Leafs.length );
-            pragma(msg,"tree exp:");
-            pragma(msg,genLoop!(ResultIdx,"This",typeof(This),indexes));
+            // pragma(msg,Leafs);
+        // pragma(msg, Leafs.length );
+            // pragma(msg,"tree exp:");
+            // pragma(msg,genLoop!(ResultIdx,"This",typeof(This),indexes));
             mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
 
             static if(indexes[0].length > 0)
@@ -554,8 +554,8 @@ class Func(alias fun,Leafs...)
             auto dummyshape = getShape!(dmmy)([Idxes],This.shapeList);
             auto sumgg = gged!(Type)(dummyshape.tupleof);
         }
-        pragma(msg, Idxes );
-        pragma(msg,genLoop!(ignr,uniq,dmmy));
+        // pragma(msg, Idxes );
+        // pragma(msg,genLoop!(ignr,uniq,dmmy));
         mixin(genLoop!(ignr,uniq,dmmy));
 
         static if(uniq.length > 0)

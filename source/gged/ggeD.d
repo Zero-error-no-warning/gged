@@ -6,10 +6,9 @@ https://opensource.org/licenses/mit-license.php
 
 module ggeD.ggeD;
 import std;
-public import ggeD.indexVec;
+import ggeD.indexVec;
 import mir.ndslice;
-
-public import ggeD.einsum;
+import ggeD.einsum;
 
 
 
