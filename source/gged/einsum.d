@@ -6,7 +6,7 @@ import ggeD.ggeD;
 
 unittest
 {
-    auto t1 = iota(9).gged!double(3,3);
+    auto t1 = iota(9).array.gged!double(3,3);
     assert(t1 == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
     
     auto tr = Einsum | t1.ii;
