@@ -2,6 +2,9 @@
 	"name": "gged",
 	"authors": ["Zenw"],
 	"copyright": "Copyright (c) 2022 Zenw",
+	"dependencies": {
+		"mir-algorithm":  "~>3.18.2"
+	},
 	"description": "non-jagged array and tensor library",
 	"license": "MIT",
     "targetType": "library"
