@@ -3,11 +3,6 @@ Copyright (c) 2022 Zenw
 Released under the MIT license
 https://opensource.org/licenses/mit-license.php
 */
-/*
-Copyright (c) 2022 Zenw
-Released under the MIT license
-https://opensource.org/licenses/mit-license.php
-*/
 
 module ggeD.ggeD;
 import std;
@@ -131,5 +126,20 @@ struct Gged(T,ulong RANK, SliceKind kind)
         static assert(idx.length ==Rank,"index notation length should be same as the tensor Rank");
         return new Leaf!(idx,typeof(this))(this);
     }
-        
+    auto opEquals(RHS)(RHS rhs)
+    {
+        bool result = true;
+        static if(is(RHS == Gged!(T2,RANK,kind2),T2,kind2))
+        {
+            foreach(ijk ; index)
+            {
+                result &= rhs[ijk] == this[ijk];
+            }
+        }
+        else
+        {
+            _slice == rhs;
+        }
+        return result;
+    }
 }
