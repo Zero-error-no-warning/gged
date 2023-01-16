@@ -5,57 +5,51 @@ A ~~ja~~gged array library that saves you from writing nested for statements in 
 ジャグ配列じゃない多次元配列ライブラリです。入れ子にせずループを回すための機能を提供します。
 
 ``` D
-import ggeD;
-import std.range : iota;
-import std.array : array;
-import std.math : sin;
-import std.stdio : writeln;
+import ggeD.ggeD;
+import std;
 void main()
 {
-    auto A = gged!double(iota(27.).array,3,3,3); // create A gged array
-    foreach(ijk ; A) // parallel foreach
+    auto A = iota(27.).array.gged!double(3,3,3); // create a gged array
+    foreach(ijk ; A.index) 
     {
         A[ijk] = sin(A[ijk]); // easy to access
-        A[ijk] = 1.*ijk[0] + 2.*ijk[1] + 3.*ijk[2]; // ijk is vector
+        A[ijk] = 1.*ijk[0] + 2.*ijk[1] + 3.*ijk[2]; // ijk is like vector
     }
-    foreach(i,j,k ; A.Serial) // explicit serial foreach
+    foreach(i,j,k ; A.index)
     {
         writeln(A[i,j,k]); //  also easy to access  
     }
 }
 ```
 
-And also included tensor library.
 You can use Einstein summation.
 
-アインシュタインの縮約記法が使えるテンソルライブラリもあります。
+アインシュタインの縮約記法が使えます。
 
 ``` D
-
-import ggeD : tensor , Einsum;
-import std.range : iota;
-import std.array : array;
-import std.stdio : writeln;
+import ggeD.ggeD;
+import std;
 
 void main()
 {
-	auto A = tensor!double(iota(9.).array,3,3); // 2 rank tensor(matrix)
-    auto B = tensor!double([3.,2,1],3); // 1 rank tensor(vector)
-    auto C = Einsum | A.ij*B.i; // You can write an expressions without for statement.
+    auto t1 = iota(9).gged!double(3,3);
+    assert(t1 == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
+    
+    auto tr = Einsum | t1.ii;
+    assert(tr == 12);
 
-    static assert(is(typeof(C) == Tensor!(double,1))); 
-    assert(C.shape == [3]);
+    auto transposed = Einsum.ji | t1.ij;
+    assert(transposed == [[0, 3, 6], [1, 4, 7], [2, 5, 8]]);
 
-    foreach(ijk ; C.Serial) // You can use as gged array;
-    {
-        writeln(ijk, " | " ,C[ijk]); 
-    }
+    auto delta = fnTensor((ulong i,ulong j)=>(i==j?1.:0.));
+    auto tr2 = Einsum | t1.ij*delta.ij;
+    assert(t2r == 12);
 
-    auto tr = Einsum | A.ii; // trace of A.
+    auto applyFunction = Einsum | br!tan(br!atan(t1.ij));
+    assert(applyFunction == t1);
 
-    import ggeD : BroadCast; // BroadCast makes a function usable in Einstein summation.
-    import std.math : sin; 
-    auto D  = Einsum | A.ij + BroadCast!sin(B.i*B.j); // 
+    auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1.+t1[0..3,0].i);
+    assert(applyFunction2 == atan2(t1[0,0],1+t1[0,0]) + atan2(t1[0,1],1+t1[1,0]) + atan2(t1[0,2],1+t1[2,0]) );
 }
 
 ```
