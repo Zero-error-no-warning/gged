@@ -22,8 +22,8 @@ unittest
     auto applyFunction = Einsum | br!tan(br!atan(t1.ij));
     assert(applyFunction == t1);
 
-    auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1+t1[0,0..3].j);
-    assert(applyFunction2 == t1);
+    auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1.+t1[0..3,0].i);
+    assert(applyFunction2 == atan2(t1[0,0],1+t1[0,0]) + atan2(t1[0,1],1+t1[1,0]) + atan2(t1[0,2],1+t1[2,0]) );
 }
 
 auto br(alias fun,Args...)(Args args)
@@ -221,17 +221,7 @@ template getExp(string This,Node,ulong N)
     }
     else static if(is(Node == Func!(fun,Leafs),alias fun,Leafs...))
     {
-        alias text =Alias!(This~".leafs["~N.to!string~"].FUN(");
-        
-        static foreach(i,leaf;Leafs)
-        {
-            alias exp = getExp!(This~ ".leafs["~N.to!string ~"]",leaf,i);
-            text = Alias!(text ~ exp[0]);
-            // mixin("alias exp = getExp!(This~`.leafs["~N.to!string~"]`,leaf,text"~i.to!string~"[1]);");
-            // mixin("alias text"~(i+1).to!string~"= AliasSeq!(text"~i.to!string~"[0] ~ exp[0],exp[1]);");
-        }
-        alias getExp = AliasSeq!(text~")",N+1);
-        // mixin("alias getExp = AliasSeq!(text"~(Leafs.length).to!string~"[0]~`)`,text"~(Leafs.length).to!string~"[1]);");
+        alias getExp = AliasSeq!(Node.asExp!(This~".leafs["~N.to!string~"]"),N+1);
     }
     else static if(is(Node == FnTensor!(idx,F),string idx,F))
     {
@@ -313,6 +303,8 @@ class Tree(LHS,RHS,string op,Leafs...)
                 auto sumgg = gged!(Type)(dummyshape.tupleof);
             }
             pragma(msg,Leafs);
+        pragma(msg, Leafs.length );
+            pragma(msg,"tree exp:");
             pragma(msg,genLoop!(ResultIdx,"This",typeof(This),indexes));
             mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
 
@@ -552,7 +544,6 @@ class Func(alias fun,Leafs...)
             auto dummyshape = getShape!(dmmy)([Idxes],This.shapeList);
             auto sumgg = gged!(Type)(dummyshape.tupleof);
         }
-        pragma(msg, Leafs );
         pragma(msg, Idxes );
         pragma(msg,genLoop!(ignr,uniq,dmmy));
         mixin(genLoop!(ignr,uniq,dmmy));
