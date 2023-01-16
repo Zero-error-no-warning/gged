@@ -323,8 +323,18 @@ class Tree(LHS,RHS,string op,Leafs...)
 
     auto evalDummy(string ResultIdx)()
     {
-        auto lhs =  _lhs.evalDummy!ResultIdx;
-        auto rhs =  _rhs.evalDummy!ResultIdx;
+        alias idxL  = getIndex!((LHS),ResultIdx);
+        alias idxR  = getIndex!((RHS),ResultIdx);
+        static if (idxL[0] == idxR[0])
+        {
+            auto lhs =  _lhs.eval!ResultIdx;
+            auto rhs =  _rhs.eval!ResultIdx;
+        }
+        else
+        {
+            auto lhs =  _lhs.evalDummy!ResultIdx;
+            auto rhs =  _rhs.evalDummy!ResultIdx;
+        }
         auto This = mixin("lhs"~op~"rhs");
         return This;
     }
