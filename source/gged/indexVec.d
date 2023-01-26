@@ -8,7 +8,7 @@ struct IndexVec(size_t dim)
 	SerialIndex[dim] idx;
 	alias Dim = dim;
     alias idx this;
-    void opBinary(string op,N)(N[dim] rhs)
+    @nogc void opBinary(string op,N)(N[dim] rhs)
     {
         SerialIndex[dim] result;
         foreach(i; 0 .. dim)
@@ -17,7 +17,7 @@ struct IndexVec(size_t dim)
         }
         return IndexVec!dim(result);
     }
-    void opBinaryRight(string op,N)(N[dim] lhs)
+    @nogc void opBinaryRight(string op,N)(N[dim] lhs)
     {
         SerialIndex[dim] result;
         foreach(i; 0 .. dim)
@@ -50,11 +50,11 @@ struct SerialIndex
 		_idx = cast(long)f;
         _len = len_;
 	}
-	const ulong max()
+	@nogc const ulong max()
 	{
 		return _len-1;
 	}
-	const ulong len()
+	@nogc const ulong len()
 	{
 		return _len;
 	}
@@ -62,38 +62,38 @@ struct SerialIndex
 	long _idx ;
     ulong _len;
 	alias _idx this;
-	void idx(ulong i){
+	@nogc void idx(ulong i){
 		_idx = i;
 	}
-	auto idx()
+	@nogc auto idx()
 	{
 		return _idx;
 	}
-	auto opAssign(T)(T value)
+	@nogc auto opAssign(T)(T value)
 	{
 		_idx = cast(ulong)value;
 	}
-	SerialIndex opUnary(string op)()
+	@nogc SerialIndex opUnary(string op)()
 	{
 		auto r = SerialIndex(mixin(op~"_idx"),_len);
 		return r;
 	}
-	SerialIndex opBinary(string op,T)(T value)
+	@nogc SerialIndex opBinary(string op,T)(T value)
 	{
 		auto r = SerialIndex(mixin("_idx"~op~"value"),_len);
 		return r;
 	}
-	SerialIndex opBinaryRight(string op,T)(T value)
+	@nogc SerialIndex opBinaryRight(string op,T)(T value)
 	{
 		auto r = SerialIndex(mixin("value"~op~"_idx"),_len);
 		return r;
 	}
-	SerialIndex clamp()
+	@nogc SerialIndex clamp()
 	{
 		auto r = SerialIndex(_idx < 0 ? 0 : _idx > max ? max : _idx,_len);
 		return r;
 	}
-	SerialIndex loop()
+	@nogc SerialIndex loop()
 	{
 		auto r = SerialIndex(_idx < 0 ? _len+_idx : _idx > max ? _idx-_len : _idx,_len);
 		return r;

@@ -6,7 +6,7 @@ import ggeD.ggeD;
 
 unittest
 {
-    auto t1 = iota(9).array.gged!double(3,3);
+    auto t1 = iota(9.).array.gged!double(3,3);
     assert(t1 == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
     
     auto tr = Einsum | t1.ii;
@@ -17,32 +17,37 @@ unittest
 
     auto delta = fnTensor((ulong i,ulong j)=>(i==j?1.:0.));
     auto tr2 = Einsum | t1.ij*delta.ij;
-    assert(t2r == 12);
+    assert(tr2 == 12);
 
     auto applyFunction = Einsum | br!tan(br!atan(t1.ij));
-    assert(applyFunction == t1);
+    assert(t1 == applyFunction);
 
     auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1.+t1[0..3,0].i);
     assert(applyFunction2 == atan2(t1[0,0],1+t1[0,0]) + atan2(t1[0,1],1+t1[1,0]) + atan2(t1[0,2],1+t1[2,0]) );
 }
 
+
 auto br(alias fun,Args...)(Args args)
 {
-    return new Func!(fun,Args)(args);
+    return Func!(fun,Args)(args);
 }
+
 
 auto fnTensor(F)(F fun) if(isCallable!F)
 {
-    return new class{
+    struct Sub
+    {
         auto opDispatch(string idx)()
         {
-            return new FnTensor!(idx,F)(fun);
-        };
-    };
+            return FnTensor!(idx,F)(fun);
+        }
+    }
+    return Sub();
 }
-class Einsum
+struct Einsum
 {
     static:
+    
     auto opBinary(string op,R)(R rhs) if(op == "|")
     {
         static if(getIndex!(R)[0].length > 0)
@@ -54,9 +59,11 @@ class Einsum
             return rhs.eval;
         }
     }
+    
     auto opDispatch(string name)()
-    {
-        return new class{
+    { 
+        struct Sub
+        {
             auto opBinary(string op,R)(R rhs) if(op == "|")
             {
                 static if(getIndex!(R,name)[0].length > 0)
@@ -68,10 +75,12 @@ class Einsum
                     return rhs.eval!name;
                 }
             }
-        };
-    }
-}
+        }
 
+        return Sub();
+    }
+   
+}
 
 package(ggeD):
 string onlyUniq(string input,string ignr="")
@@ -83,24 +92,25 @@ string onlyDummy(string input,string ignr="")
     return ignr != "" ? input.to!(dchar[]).filter!(a=>ignr.count(a)==0).array.sort.uniq.array.to!string :  input.to!(dchar[]).filter!(a=>input.count(a) > 1 ).array.sort.uniq.array.to!string;
 }
 
-ulong[idx.length] getShape(string idx)(string[] idxes,ulong[][] shapes)
-{
-    assert(shapes.length == idxes.length,shapes.length.to!string ~" vs "~idxes.length.to!string);
-    ulong[idx.length] result;
-    foreach(k,c;idx)
-    {
-        foreach(i,ijk;idxes)
-        {
-            auto n = ijk.countUntil(c);
-            if(n >= 0)
-            {
-                result[k] = shapes[i][n];
-                break;
-            }
-        }
-    }
-    return result;
-}
+
+// ulong[idx.length] getShape(string idx)(string[] idxes,ulong[][] shapes)
+// {
+//     ulong[idx.length] result;
+//     foreach(k,c;idx)
+//     {
+//         foreach(i,ijk;idxes)
+//         {
+//             auto n = ijk.countUntil(c);
+//             if(n >= 0)
+//             {
+//                 result[k] = shapes[i][n];
+//                 break;
+//             }
+//         }
+//     }
+//     return result;
+// }
+
 template getIdxList(Leafs...)
 {
     static if(Leafs.length == 1)
@@ -193,8 +203,6 @@ template getIndex(Node,string ignr = "")
     {
         alias UNQs = staticMap!(getunq,Leafs);
         alias DMYs = staticMap!(getdmy,Leafs);
-        // pragma(msg,join([UNQs,DMYs]).onlyUniq(ignr));
-        // pragma(msg,join([UNQs,DMYs]).onlyDummy(ignr));
         alias getIndex = AliasSeq!(join([UNQs,DMYs]).onlyUniq(ignr),join([UNQs,DMYs]).onlyDummy(ignr));
     }
     else static if(is(Node == FnTensor!(idx,F),string idx,F))
@@ -206,9 +214,21 @@ template getIndex(Node,string ignr = "")
         alias getIndex = AliasSeq!("","");
     }
 }
+
+template getShapes(Node,string This,string ijk)
+{
+    static if(ijk.length == 1)
+    {
+        alias getShapes = Alias!(Node.getShape!(This,ijk));
+    }
+    else
+    {
+        alias getShapes = Alias!(getShapes!(Node,This,ijk[0..1]) ~ "," ~ getShapes!(Node,This,ijk[1..$]));
+    }
+}
 template getExp(string This,Node,ulong N)
 {
-    static if(is(Node == Tree!(L,R,OP),L,R,string OP))
+    static if(is(Node == Tree!(L,R,OP,Leafs),L,R,string OP,Leafs...))
     {
         alias LHS = getExp!(This,L,N);
         alias RHS = getExp!(This,R,LHS[1]);
@@ -233,7 +253,6 @@ template getExp(string This,Node,ulong N)
         alias getExp = AliasSeq!(This~".leafs["~N.to!string~"]",N+1);
     }
 }
-
 template CommonTypeOfTensors(Leafs...)
 {
     import std.traits;
@@ -248,7 +267,7 @@ template CommonTypeOfTensors(Leafs...)
     alias CommonTypeOfTensors = CommonType!(Types);
 }
 
-class Tree(LHS,RHS,string op,Leafs...) 
+struct Tree(LHS,RHS,string op,Leafs...) 
 {
     LHS _lhs;
     RHS _rhs;
@@ -260,23 +279,27 @@ class Tree(LHS,RHS,string op,Leafs...)
         _rhs = rhs_;
         leafs = leafs_;
     }
-    auto opBinary(string op,R)(R ohs)
+    
+    @nogc auto opBinary(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,aLeafs),Lhs,Rhs,string OP,aLeafs...))
-            return new Tree!(typeof(this),R,op,Leafs,aLeafs)(this,ohs,leafs,ohs.leafs);
+            return Tree!(typeof(this),R,op,Leafs,aLeafs)(this,ohs,leafs,ohs.leafs);
         else
-            return new Tree!(typeof(this),R,op,Leafs,R)(this,ohs,leafs,ohs);
+            return Tree!(typeof(this),R,op,Leafs,R)(this,ohs,leafs,ohs);
     }
-    auto opBinaryRight(string op,R)(R ohs)
+    
+    @nogc auto opBinaryRight(string op,R)(R ohs)
     {
-        return new Tree!(R,typeof(this),op,R,Leafs)(ohs,this,ohs,leafs);
+        return Tree!(R,typeof(this),op,R,Leafs)(ohs,this,ohs,leafs);
     }
-    auto opUnary(string op)()
+    
+    @nogc auto opUnary(string op)()
     {
-        return new Tree!(Type,typeof(this),op,Type,Leafs)(0,this,0,leafs);
+        return Tree!(Type,typeof(this),op,Type,Leafs)(0,this,0,leafs);
     }
 
     alias Type = CommonTypeOfTensors!(Leafs);
+    
     auto eval(string ResultIdx="")()
     {
         auto This = this.evalDummy!ResultIdx();
@@ -290,8 +313,7 @@ class Tree(LHS,RHS,string op,Leafs...)
             alias indexes  = getIndex!(typeof(This),ResultIdx);
             static if(indexes[0].length > 0)
             {
-                auto uniqshape = getShape!(indexes[0])([Idxes],This.shapeList);
-                auto result = gged!(Type)(uniqshape.tupleof);
+                auto result = mixin("gged!(Type)("~getShapes!(typeof(This),"This",indexes[0])~")");
             }
             else
             {
@@ -299,13 +321,8 @@ class Tree(LHS,RHS,string op,Leafs...)
             }
             static if(indexes[1].length > 0)
             {
-                auto dummyshape = getShape!(indexes[1])([Idxes],This.shapeList);
-                auto sumgg = gged!(Type)(dummyshape.tupleof);
+                auto sumgg = mixin("gged!(Type)("~getShapes!(typeof(This),"This",indexes[1])~")");
             }
-            // pragma(msg,Leafs);
-        // pragma(msg, Leafs.length );
-            // pragma(msg,"tree exp:");
-            // pragma(msg,genLoop!(ResultIdx,"This",typeof(This),indexes));
             mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
 
             static if(indexes[0].length > 0)
@@ -321,6 +338,7 @@ class Tree(LHS,RHS,string op,Leafs...)
 
     }
 
+    
     auto evalDummy(string ResultIdx)()
     {
         alias idxL  = getIndex!((LHS),ResultIdx);
@@ -375,28 +393,47 @@ class Tree(LHS,RHS,string op,Leafs...)
        return result;
     }
 
-    auto shapeList()
+    static auto getShape(string This = "this",string ijk)()
     {
-        ulong[][] shapes;
-        static foreach(i,leaf;Leafs)
-        {{
-            static if(is(leaf == Leaf!(idx,T),string idx,T))
+        static foreach(i,Node;Leafs)
+        {{ 
+            static if(__traits(hasMember,Node,"getShape"))
             {
-                shapes ~= leafs[i].shape.dup;
+                string result = Node.getShape!(This~".leafs["~i.to!string~"]",ijk);
             }
-            else static if(is(leaf == Func!(func,Leafs_),alias func,Leafs_...))
+            else
             {
-                shapes ~= leafs[i].shapeList;
+                string result = "";
+            }
+            if(result != "")
+            {
+                return result;
             }
         }}
-        return shapes;
+        return "";
     }
+
 }
-class Leaf(string idx,aTensor)
+
+
+
+struct Leaf(string idx,aTensor)
 {
     this(aTensor t)
     {
         tensor = t;
+    }
+
+    static auto getShape(string This = "this",string ijk)()
+    {
+        static if(idx.countUntil(ijk) >= 0)
+        {
+            return This ~ ".shape["~idx.countUntil(ijk).to!string ~"]";
+        }
+        else
+        {
+            return "";
+        }
     }
 
     aTensor tensor;
@@ -404,29 +441,25 @@ class Leaf(string idx,aTensor)
     auto leafs() => [this];
     alias LeafTypes = AliasSeq!(typeof(this));
 
-    auto shapeList()
-    {
-        return null;
-    }
 
     auto shape() => tensor.shape;
-    auto opBinary(string op,R)(R ohs)
+    @nogc auto opBinary(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs),Lhs,Rhs,string OP,Leafs...))
-            return new Tree!(typeof(this),R,op,typeof(this),Leafs)(this,ohs,this,ohs.leafs);
+            return Tree!(typeof(this),R,op,typeof(this),Leafs)(this,ohs,this,ohs.leafs);
         else
-            return new Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+            return Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
     }
-    auto opBinaryRight(string op,R)(R ohs)
+    @nogc auto opBinaryRight(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs),Lhs,Rhs,string OP,Leafs...))
-            return new Tree!(R,typeof(this),op,Leafs,typeof(this))(this,ohs,ohs.leafs,this);
+            return Tree!(R,typeof(this),op,Leafs,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return new Tree!(R,typeof(this),op,R,typeof(this))(ohs,this,ohs,this);
+            return Tree!(R,typeof(this),op,R,typeof(this))(ohs,this,ohs,this);
     }
-    auto opUnary(string op)()
+    @nogc auto opUnary(string op)()
     {
-        return new Tree!(Type,typeof(this),op,typeof(this))(cast(Type)0,this,this);
+        return Tree!(Type,typeof(this),op,typeof(this))(cast(Type)0,this,this);
     }
     auto evalDummy(string ignr="")()
     {
@@ -438,8 +471,7 @@ class Leaf(string idx,aTensor)
         alias dmmy = Alias!(idx.onlyDummy(ignr));
         static if(uniq.length > 0)
         {
-            auto uniqshape = getShape!(uniq)([idx],[shape]);
-            auto result = gged!(Type)(uniqshape.tupleof);
+            auto result = mixin("gged!(Type)("~getShapes!(typeof(this),"this",uniq)~")");
         }
         else
         {
@@ -447,8 +479,7 @@ class Leaf(string idx,aTensor)
         }
         static if(dmmy.length > 0)
         {
-            auto dummyshape = getShape!(dmmy)([idx],[shape]);
-            auto sumgg = gged!(Type)(dummyshape.tupleof);
+            auto sumgg = mixin("gged!(Type)("~getShapes!(typeof(this),"this",dmmy)~")");
         }
 
 
@@ -512,7 +543,8 @@ auto eval(string ignr="",T)(T value)
     return value;
 }
 
-class Func(alias fun,Leafs...)
+
+struct Func(alias fun,Leafs...)
 {
     alias FUN = fun;
     static if(is(ReturnType!fun))
@@ -531,7 +563,7 @@ class Func(alias fun,Leafs...)
         {
             mixin("auto arg_"~i.to!string ~" = leafs["~i.to!string~"].evalDummy!ignr;");
         }
-        mixin("return new Func!(fun,"~iota(Leafs.length).map!(i=>"typeof(arg_"~i.to!string~"),").join~")("~iota(Leafs.length).map!(i=>"arg_"~i.to!string~",").join~");");
+        mixin("return Func!(fun,"~iota(Leafs.length).map!(i=>"typeof(arg_"~i.to!string~"),").join~")("~iota(Leafs.length).map!(i=>"arg_"~i.to!string~",").join~");");
     }
     auto eval(string ignr="")()
     {
@@ -541,9 +573,7 @@ class Func(alias fun,Leafs...)
         alias dmmy = Alias!(onlyDummy([Idxes].join, ignr));
         static if(uniq.length > 0)
         {
-            writeln(uniq," , ",[Idxes]," , ",This.shapeList);
-            auto uniqshape = getShape!(uniq)([Idxes],This.shapeList);
-            auto result = gged!(Type)(uniqshape.tupleof);
+            auto result = mixin("gged!(Type)("~getShapes!(typeof(This),"this",uniq)~")");
         }
         else
         {
@@ -551,11 +581,8 @@ class Func(alias fun,Leafs...)
         }
         static if(dmmy.length > 0)
         {
-            auto dummyshape = getShape!(dmmy)([Idxes],This.shapeList);
-            auto sumgg = gged!(Type)(dummyshape.tupleof);
+            auto sumgg = mixin("gged!(Type)("~getShapes!(typeof(This),"this",dmmy)~")");
         }
-        // pragma(msg, Idxes );
-        // pragma(msg,genLoop!(ignr,uniq,dmmy));
         mixin(genLoop!(ignr,uniq,dmmy));
 
         static if(uniq.length > 0)
@@ -605,6 +632,26 @@ class Func(alias fun,Leafs...)
         }
        return result;
     }
+
+    static auto getShape(string This = "this",string ijk)()
+    {
+        static foreach(i,Node;Leafs)
+        {{ 
+            static if(__traits(hasMember,Node,"getShape"))
+            {
+                auto result = Node.getShape!(This~".leafs["~i.to!string~"]",ijk);
+            }
+            else
+            {
+                auto result = "";
+            }
+            if(result != "")
+            {
+                return result;
+            }
+        }}
+        return "";
+    }
     
     static auto asExp(string This = "this")()
     {
@@ -637,59 +684,23 @@ class Func(alias fun,Leafs...)
         result ~= ")";
         return result;
     }
-    auto shapeList()
-    {
-        ulong[][] shapes;
-        static foreach(i,leaf;Leafs)
-        {{
-            static if(is(leaf == Leaf!(idx,T),string idx,T))
-            {
-                shapes ~= leafs[i].shape.dup;
-            }
-            else static if(is(leaf == Func!(func,Leafs_),alias func,Leafs_...))
-            {
-                shapes ~= leafs[i].shapeList;
-            }
-            else static if(is(leaf == Tree!(LHS,RHS,op,Leafs_),LHS,RHS,string op,Leafs_...))
-            {
-                shapes ~= leafs[i].shapeList;
-            }
-        }}
-        return shapes;
-    }
-    template AllLeaf()
-    {
-        alias AllLeaf = AliasSeq!();
-        static foreach(leaf;Leafs)
-        {   
-            static if(is(leaf == Leaf!(idx,Tns),string idx,Tns) || isBasicType!(leaf))
-            {
-                AllLeaf = AliasSeq!(AllLeaf,leaf);
-            }
-            else static if(is(leaf == Func!(func_,Leafs_),alias func_,Leafs_...))
-            {
-                AllLeaf = AliasSeq!(AllLeaf,leaf.AllLeaf!());
-            }
-        }
-    }
-    auto opBinary(string op,R)(R ohs)
+    @nogc auto opBinary(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return new Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
+            return Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
         else
-            return new Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+            return Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
     }
-    auto opBinaryRight(string op,R)(R ohs)
+    @nogc auto opBinaryRight(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return new Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
+            return Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return new Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
+            return Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
-    //TODO: opBinary等を実装すること
 }
 
-class FnTensor(string idx,F)
+struct FnTensor(string idx,F)
 {
     F FUN;
     this(F)(F fun) if (isCallable!F)
@@ -697,23 +708,22 @@ class FnTensor(string idx,F)
         FUN = fun;
     }
 
-    auto opBinary(string op,R)(R ohs)
+    static auto getShape(string This = "this",string ijk)()
+    {
+        return "";
+    }
+    @nogc auto opBinary(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return new Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
+            return Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
         else
-            return new Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+            return Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
     }
-    auto opBinaryRight(string op,R)(R ohs)
+    @nogc auto opBinaryRight(string op,R)(R ohs)
     {
         static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return new Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
+            return Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return new Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
-    }
-    auto shapeList()
-    {
-        ulong[][] shapes;
-        return shapes;
+            return Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
 }

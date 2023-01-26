@@ -32,7 +32,7 @@ import std;
 
 void main()
 {
-    auto t1 = iota(9).gged!double(3,3);
+    auto t1 = iota(9.).array.gged!double(3,3);
     assert(t1 == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
     
     auto tr = Einsum | t1.ii;
@@ -43,10 +43,10 @@ void main()
 
     auto delta = fnTensor((ulong i,ulong j)=>(i==j?1.:0.));
     auto tr2 = Einsum | t1.ij*delta.ij;
-    assert(t2r == 12);
+    assert(tr2 == 12);
 
     auto applyFunction = Einsum | br!tan(br!atan(t1.ij));
-    assert(applyFunction == t1);
+    assert(t1 == applyFunction);
 
     auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1.+t1[0..3,0].i);
     assert(applyFunction2 == atan2(t1[0,0],1+t1[0,0]) + atan2(t1[0,1],1+t1[1,0]) + atan2(t1[0,2],1+t1[2,0]) );
