@@ -12,25 +12,14 @@ import ggeD.einsum;
 
 
 
-auto gged(T,Args...)(T[] value,Args xyz) 
+auto gged(T,R,Args...)(R value,Args xyz) if(isInputRange!(Unqual!R))
 {
     auto gg = gged!T(xyz);
     ulong idx = 0;
     foreach(ijk;gg.index)
     {
-        gg[ijk] = value[idx];
-        idx++;
-    }
-    return gg;
-}
-auto gged(T,N)(T[] value,ulong[N] xyz)   
-{
-    auto gg = gged!T(xyz);
-    ulong idx = 0;
-    foreach(ijk;gg.index)
-    {
-        gg[ijk] = value[idx];
-        idx++;
+        gg[ijk] = value.front;
+        value.popFront();
     }
     return gg;
 }
@@ -138,7 +127,7 @@ struct Gged(T,ulong RANK, SliceKind kind)
             bool result = true;
             foreach(ijk ; index)
             {
-                result &= approxEqual(rhs[ijk] , this[ijk] );
+                result &= isClose(rhs[ijk] , this[ijk] );
             }
             return result;
         }

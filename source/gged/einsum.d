@@ -158,6 +158,10 @@ template filterTensors(Leafs...)
         {
             alias filterTensors = filterTensors!(Leafs_);
         }
+        else static if(is(Leafs[0] == Tree!(L,R,OP,Leafs_),L,R,string OP,Leafs_...))
+        {
+            alias filterTensors = filterTensors!(Leafs_);
+        }
         else 
         {
             alias filterTensors = AliasSeq!();
@@ -321,7 +325,7 @@ struct Tree(LHS,RHS,string op,Leafs...)
             }
             static if(indexes[1].length > 0)
             {
-                auto sumgg = mixin("gged!(Type)("~getShapes!(typeof(This),"This",indexes[1])~")");
+                auto sumgg = mixin("gged!(Empty)("~getShapes!(typeof(This),"This",indexes[1])~")");
             }
             mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
 
@@ -479,7 +483,7 @@ struct Leaf(string idx,aTensor)
         }
         static if(dmmy.length > 0)
         {
-            auto sumgg = mixin("gged!(Type)("~getShapes!(typeof(this),"this",dmmy)~")");
+            auto sumgg = mixin("gged!(Empty)("~getShapes!(typeof(this),"this",dmmy)~")");
         }
 
 
@@ -581,7 +585,7 @@ struct Func(alias fun,Leafs...)
         }
         static if(dmmy.length > 0)
         {
-            auto sumgg = mixin("gged!(Type)("~getShapes!(typeof(This),"this",dmmy)~")");
+            auto sumgg = mixin("gged!(Empty)("~getShapes!(typeof(This),"this",dmmy)~")");
         }
         mixin(genLoop!(ignr,uniq,dmmy));
 
@@ -726,4 +730,9 @@ struct FnTensor(string idx,F)
         else
             return Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
+}
+
+struct Empty
+{
+
 }
