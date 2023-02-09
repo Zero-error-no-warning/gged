@@ -9,7 +9,7 @@ import std;
 import ggeD.indexVec;
 import mir.ndslice;
 import ggeD.einsum;
-
+import mir.ndslice.topology : iota;
 
 
 auto gged(T,R,Args...)(R value,Args xyz) if(isInputRange!(Unqual!R))
@@ -78,47 +78,58 @@ struct Gged(T,ulong RANK, SliceKind kind)
     SliceType _slice;
     alias Kind = kind;
     
-	alias Type = PointerTarget!T;
+    static if(isPointer!T)
+    {
+    	alias Type = PointerTarget!T;
+    }
+    else
+    {
+        alias Type = ReturnType!(T.opUnary!"*");
+    } 
 	alias TypePointer = T;
 	alias Rank = Alias!(RANK);
 
     alias _slice this;
     
-    @nogc auto shape() => _slice.shape; 
+    @nogc nothrow auto shape() => _slice.shape; 
     
-    @nogc auto index(){
+    @nogc nothrow auto index(){
         return IndexLoop!(typeof(this))(this);
     }
     auto toString()=>_slice.to!string;
 
 
-    @nogc auto opSlice(X,Y)(X start, Y end) if(is(X == SerialIndex) && is(Y == SerialIndex))
+    @nogc nothrow auto opSlice(X,Y)(X start, Y end) if(is(X == SerialIndex) && is(Y == SerialIndex))
     {
         return gged(_slice.opSlice(start,end));
     }
-    @nogc auto opSlice(size_t dim,X,Y)(X start, Y end) 
+    @nogc nothrow auto opSlice(size_t dim,X,Y)(X start, Y end) 
     {
         return _slice.opSlice!dim(start,end);
     }
-    @nogc auto opIndex(IndexVec!Rank args){
+    @nogc nothrow auto opIndex(IndexVec!Rank args){
         return gged(_slice.opIndex(args.idx.tupleof));
     }
-    @nogc auto opIndex(Args...)(Args args){
+    @nogc nothrow auto opIndex(Args...)(Args args){
         return gged(_slice.opIndex(args));
     }
-    @nogc auto opIndexAssign(PointerTarget!T value,IndexVec!Rank args){
-        return gged(_slice.opIndexAssign(value,args.idx.tupleof));
+    import std.traits;
+    static if( __traits(compiles, () {T itr; itr[0] = Type.init; } ))
+    {
+        @nogc nothrow auto opIndexAssign(Type value,IndexVec!Rank args){
+            return gged(_slice.opIndexAssign(value,args.idx.tupleof));
+        }
+        @nogc nothrow auto opIndexAssign(Args...)(Type value,Args args){
+            return gged(_slice.opIndexAssign(value,args));
+        }
     }
-    @nogc auto opIndexAssign(Args...)(PointerTarget!T value,Args args){
-        return gged(_slice.opIndexAssign(value,args));
-    }
-    @nogc auto opDollar(ulong dim)(){
+    @nogc nothrow auto opDollar(ulong dim)(){
         return _slice.opDollar!dim;
     }
-    @nogc auto opDispatch(string idx)()
+    @nogc nothrow auto opDispatch(string idx)()
     {
         static assert(idx.length ==Rank,"index notation length should be same as the tensor Rank");
-        return Leaf!(idx,typeof(this))(this);
+        return Leaf!("",idx,typeof(this))(this);
     }
     auto opEquals(RHS)(RHS rhs)
     {

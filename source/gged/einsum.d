@@ -6,38 +6,44 @@ import ggeD.ggeD;
 
 unittest
 {
-    auto t1 = iota(9.).array.gged!double(3,3);
-    assert(t1 == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
-    
-    auto tr = Einsum | t1.ii;
+   auto A = iota(9.).gged!double(3,3);
+    auto x = A[0,0..$];
+    assert(A == [[0, 1, 2],[3, 4, 5],[6, 7, 8]]);
+    assert(x == [0, 1, 2]);
+
+    auto Ax = Einsum | A.ij * x.i;
+    assert(Ax == [15,18,21]);
+
+    auto tr = Einsum | A.ii;
     assert(tr == 12);
 
-    auto transposed = Einsum.ji | t1.ij;
+    auto transposed = Einsum.ji | A.ij;
     assert(transposed == [[0, 3, 6], [1, 4, 7], [2, 5, 8]]);
 
     auto delta = fnTensor((ulong i,ulong j)=>(i==j?1.:0.));
-    auto tr2 = Einsum | t1.ij*delta.ij;
+    auto tr2 = Einsum | A.ij*delta.ij;
     assert(tr2 == 12);
 
-    auto applyFunction = Einsum | br!tan(br!atan(t1.ij));
-    assert(t1 == applyFunction);
+    auto applyFunction = Einsum | br!tan(br!atan(A.ij)*1.);
+    assert(A == applyFunction);
 
-    auto applyFunction2 = Einsum | br!atan2(t1[0,0..3].i,1.+t1[0..3,0].i);
-    assert(applyFunction2 == atan2(t1[0,0],1+t1[0,0]) + atan2(t1[0,1],1+t1[1,0]) + atan2(t1[0,2],1+t1[2,0]) );
+    auto applyFunction2 = Einsum | br!atan2(A[0,0..3].i,1.+A[0..3,0].i);
+    assert(applyFunction2 == atan2(A[0,0],1+A[0,0]) + atan2(A[0,1],1+A[1,0]) + atan2(A[0,2],1+A[2,0]) );
 }
 
 
-auto br(alias fun,Args...)(Args args)
+@nogc auto br(alias fun,Args...)(Args args)
 {
-    return Func!(fun,Args)(args);
+    return Func!("",fun,Args)(args);
 }
 
 
-auto fnTensor(F)(F fun) if(isCallable!F)
+
+@nogc auto fnTensor(F)(F fun) if(isCallable!F)
 {
     struct Sub
     {
-        auto opDispatch(string idx)()
+        auto opDispatch(string idx)() 
         {
             return FnTensor!(idx,F)(fun);
         }
@@ -47,33 +53,41 @@ auto fnTensor(F)(F fun) if(isCallable!F)
 struct Einsum
 {
     static:
-    
-    auto opBinary(string op,R)(R rhs) if(op == "|")
+    auto evalnogc(string ResultIdx="",Node)(Node leaf) @nogc nothrow
     {
-        static if(getIndex!(R)[0].length > 0)
+        import mir.ndslice;
+        import ggeD.iterator;
+        alias indexes  = getIndex!(Node,ResultIdx);
+        alias Origin = TemplateOf!Node;
+        alias Args = TemplateArgsOf!Node;
+        alias NewOne =  Origin!(ResultIdx,Args[1..$]);
+        auto newone = NewOne(leaf.tupleof);
+        static if(indexes[0].length > 0)
         {
-            return rhs.eval.tensor;
+            alias shapes= Alias!(getShapes!(NewOne,"newone",indexes[0]));
+            auto arr =  mixin("iota("~shapes~")");
+            size_t[indexes[0].length] shape = mixin("["~shapes~"]");
+            auto itr = EinsumIterator!(typeof(arr._iterator),typeof(arr),NewOne)(arr._iterator,arr,newone);
+            return Slice!(typeof(itr),indexes[0].length)(shape,itr).gged;
         }
         else
         {
-            return rhs.eval;
+            return newone.calc();
         }
     }
+
+    auto opBinary(string op,R)(R rhs) @nogc nothrow  if(op == "|") 
+    {
+        return evalnogc(rhs);
+    }
     
-    auto opDispatch(string name)()
+    auto opDispatch(string name)()  @nogc nothrow 
     { 
         struct Sub
         {
             auto opBinary(string op,R)(R rhs) if(op == "|")
             {
-                static if(getIndex!(R,name)[0].length > 0)
-                {
-                    return rhs.eval!name.tensor;
-                }
-                else
-                {
-                    return rhs.eval!name;
-                }
+                return evalnogc!name(rhs);
             }
         }
 
@@ -93,72 +107,19 @@ string onlyDummy(string input,string ignr="")
 }
 
 
-// ulong[idx.length] getShape(string idx)(string[] idxes,ulong[][] shapes)
-// {
-//     ulong[idx.length] result;
-//     foreach(k,c;idx)
-//     {
-//         foreach(i,ijk;idxes)
-//         {
-//             auto n = ijk.countUntil(c);
-//             if(n >= 0)
-//             {
-//                 result[k] = shapes[i][n];
-//                 break;
-//             }
-//         }
-//     }
-//     return result;
-// }
-
-template getIdxList(Leafs...)
-{
-    static if(Leafs.length == 1)
-    {
-        static if(is(Leafs[0] == Leaf!(idx,T),string idx,T))
-        {
-            alias getIdxList = idx;
-        }
-        else static if(is(Leafs[0] == Func!(func,Leafs_),alias func,Leafs_...))
-        {
-            alias getIdxList = getIdxList!(Leafs_);
-        }
-        else static if(is(Leafs[0] == FnTensor!(idx,F),string idx,F))
-        {
-            alias getIdxList = idx;
-        }
-        else static if(is(Leafs[0] == Tree!(LHS,RHS,op,Leafs_) ,LHS,RHS,string op,Leafs_...))
-        {
-            alias getIdxList = getIdxList!Leafs_;
-        }
-        else 
-        {
-            alias getIdxList = AliasSeq!();
-        }
-    }
-    else static if(Leafs.length == 0)
-    {
-        alias getIdxList = AliasSeq!();
-    }
-    else
-    {
-        alias getIdxList = AliasSeq!(getIdxList!(Leafs[0]),getIdxList!(Leafs[1..$]));
-    }
-}
-
 template filterTensors(Leafs...)
 {
     static if(Leafs.length == 1)
     {
-        static if(is(Leafs[0] == Leaf!(idx,T),string idx,T) || isBasicType!(Leafs[0]))
+        static if(is(Leafs[0] == Leaf!(Ridx,idx,T),string Ridx,string idx,T) || isBasicType!(Leafs[0]))
         {
             alias filterTensors = Leafs[0];
         }
-        else static if(is(Leafs[0] == Func!(func,Leafs_),alias func,Leafs_...))
+        else static if(is(Leafs[0] == Func!(Ridx,func,Leafs_),string Ridx,alias func,Leafs_...))
         {
             alias filterTensors = filterTensors!(Leafs_);
         }
-        else static if(is(Leafs[0] == Tree!(L,R,OP,Leafs_),L,R,string OP,Leafs_...))
+        else static if(is(Leafs[0] == Tree!(Ridx,L,R,OP,Leafs_),string Ridx,L,R,string OP,Leafs_...))
         {
             alias filterTensors = filterTensors!(Leafs_);
         }
@@ -186,7 +147,7 @@ template getIndex(Node,string ignr = "")
     {
         alias getdmy = Alias!(getIndex!(Leaf,ignr)[1]);
     }
-    static if(is(Node == Tree!(L,R,OP,Leafs),L,R,string OP,Leafs...))
+    static if(is(Node == Tree!(Ridx,L,R,OP,Leafs),string Ridx,L,R,string OP,Leafs...))
     {
         alias LHS = getIndex!(L,ignr);
         alias RHS = getIndex!(R,ignr);
@@ -199,11 +160,11 @@ template getIndex(Node,string ignr = "")
             alias getIndex = AliasSeq!((LHS[0].onlyUniq(ignr)~RHS[0].onlyUniq(ignr)).array.sort.uniq.array.to!string ,"");
         }
     }
-    else static if(is(Node == Leaf!(idx,Ts),string idx,Ts))
+    else static if(is(Node == Leaf!(Ridx,idx,Ts),string Ridx,string idx,Ts))
     {
         alias getIndex = AliasSeq!(idx.onlyUniq(ignr),idx.onlyDummy(ignr));
     }
-    else static if(is(Node == Func!(fun,Leafs),alias fun,Leafs...))
+    else static if(is(Node == Func!(Ridx,fun,Leafs),string Ridx,alias fun,Leafs...))
     {
         alias UNQs = staticMap!(getunq,Leafs);
         alias DMYs = staticMap!(getdmy,Leafs);
@@ -225,6 +186,10 @@ template getShapes(Node,string This,string ijk)
     {
         alias getShapes = Alias!(Node.getShape!(This,ijk));
     }
+    else static if(ijk.length == 0)
+    {
+        alias getShapes = Alias!"";
+    }
     else
     {
         alias getShapes = Alias!(getShapes!(Node,This,ijk[0..1]) ~ "," ~ getShapes!(Node,This,ijk[1..$]));
@@ -232,18 +197,18 @@ template getShapes(Node,string This,string ijk)
 }
 template getExp(string This,Node,ulong N)
 {
-    static if(is(Node == Tree!(L,R,OP,Leafs),L,R,string OP,Leafs...))
+    static if(is(Node == Tree!(Ridx,L,R,OP,Leafs),string Ridx,L,R,string OP,Leafs...))
     {
         alias LHS = getExp!(This,L,N);
         alias RHS = getExp!(This,R,LHS[1]);
         alias getExp = AliasSeq!("("~LHS[0]~")" ~ OP ~ "("~RHS[0]~")",RHS[1]);
     }
-    else static if(is(Node == Leaf!(idx,Ts),string idx,Ts))
+    else static if(is(Node == Leaf!(Ridx,idx,Ts),string Ridx,string idx,Ts))
     {
         alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
         alias getExp = AliasSeq!(This~".leafs["~N.to!string~"].tensor["~ijk~"]",N+1);
     }
-    else static if(is(Node == Func!(fun,Leafs),alias fun,Leafs...))
+    else static if(is(Node == Func!(Ridx,fun,Leafs),string Ridx,alias fun,Leafs...))
     {
         alias getExp = AliasSeq!(Node.asExp!(This~".leafs["~N.to!string~"]"),N+1);
     }
@@ -271,7 +236,7 @@ template CommonTypeOfTensors(Leafs...)
     alias CommonTypeOfTensors = CommonType!(Types);
 }
 
-struct Tree(LHS,RHS,string op,Leafs...) 
+struct Tree(string ResultIdx ="",LHS,RHS,string op,Leafs...) 
 {
     LHS _lhs;
     RHS _rhs;
@@ -284,116 +249,46 @@ struct Tree(LHS,RHS,string op,Leafs...)
         leafs = leafs_;
     }
     
-    @nogc auto opBinary(string op,R)(R ohs)
+    auto opBinary(string op,R)(R ohs) @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,aLeafs),Lhs,Rhs,string OP,aLeafs...))
-            return Tree!(typeof(this),R,op,Leafs,aLeafs)(this,ohs,leafs,ohs.leafs);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,aLeafs),string Ridx,Lhs,Rhs,string OP,aLeafs...))
+            return Tree!("",typeof(this),R,op,Leafs,aLeafs)(this,ohs,leafs,ohs.leafs);
         else
-            return Tree!(typeof(this),R,op,Leafs,R)(this,ohs,leafs,ohs);
+            return Tree!("",typeof(this),R,op,Leafs,R)(this,ohs,leafs,ohs);
     }
     
-    @nogc auto opBinaryRight(string op,R)(R ohs)
+    auto opBinaryRight(string op,R)(R ohs) @nogc nothrow 
     {
-        return Tree!(R,typeof(this),op,R,Leafs)(ohs,this,ohs,leafs);
+        return Tree!("",R,typeof(this),op,R,Leafs)(ohs,this,ohs,leafs);
     }
     
-    @nogc auto opUnary(string op)()
+    auto opUnary(string op)() @nogc nothrow 
     {
-        return Tree!(Type,typeof(this),op,Type,Leafs)(0,this,0,leafs);
+        return Tree!("",Type,typeof(this),op,Type,Leafs)(0,this,0,leafs);
     }
 
     alias Type = CommonTypeOfTensors!(Leafs);
-    
-    auto eval(string ResultIdx="")()
-    {
-        auto This = this.evalDummy!ResultIdx();
-        static if(is(typeof(This) : Type) || is(typeof(This) == Leaf!(idx,Tns),string idx, Tns))
-        {
-            return This;
-        }
-        else
-        {
-            alias Idxes = getIdxList!(This.LeafTypes);
-            alias indexes  = getIndex!(typeof(This),ResultIdx);
-            static if(indexes[0].length > 0)
-            {
-                auto result = mixin("gged!(Type)("~getShapes!(typeof(This),"This",indexes[0])~")");
-            }
-            else
-            {
-                Type result;
-            }
-            static if(indexes[1].length > 0)
-            {
-                auto sumgg = mixin("gged!(Empty)("~getShapes!(typeof(This),"This",indexes[1])~")");
-            }
-            mixin(genLoop!(ResultIdx,"This",typeof(This),indexes));
 
-            static if(indexes[0].length > 0)
-            {
-                auto leaf = result.opDispatch!(indexes[0]);
-            }
-            else
-            {
-                auto leaf = result;
-            }
-            return leaf;
-        }
-
-    }
-
-    
-    auto evalDummy(string ResultIdx)()
+    mixin(genCalc);
+    static auto genCalc()
     {
-        alias idxL  = getIndex!((LHS),ResultIdx);
-        alias idxR  = getIndex!((RHS),ResultIdx);
-        static if (idxL[0] == idxR[0])
-        {
-            auto lhs =  _lhs.eval!ResultIdx;
-            auto rhs =  _rhs.eval!ResultIdx;
-        }
-        else
-        {
-            auto lhs =  _lhs.evalDummy!ResultIdx;
-            auto rhs =  _rhs.evalDummy!ResultIdx;
-        }
-        auto This = mixin("lhs"~op~"rhs");
-        return This;
-    }
-    static auto genLoop(string ResultIdx="",string This,TypeThis,indexes...)()
-    {
-        string UNIQ = (indexes[0].map!(c=>[c]).join(",").to!string);
+        alias indexes  = getIndex!(typeof(this),ResultIdx);
+        string UNIQ = (indexes[0].map!(c=>"size_t "~[c]).join(",").to!string);
         string DMMY = (indexes[1].map!(c=>[c]).join(",").to!string);
-        string result="";
-        if(UNIQ.length > 0)
-        {
-            result~= "foreach("~UNIQ~";"~"result.index){\n";
-            result~= "\tresult["~UNIQ~"] = 0.;\n";
-        }
-        else
-        {
-            result~= "result = 0.;\n";
-        }
+        string result="auto calc(" ~ UNIQ ~ ") @nogc nothrow {\n";
+        result ~= "\t size_t["~indexes[1].length.to!string~"] shape = [" ~ getShapes!(typeof(this),"this",indexes[1]) ~"];\n";
+        result ~= "\t auto result = cast(Type)0;\n";
+
         if(DMMY.length > 0)
         {
-            result~= "\tforeach("~DMMY~";"~"sumgg.index){\n";
+            static foreach(i,ijk;indexes[1])
+            {
+                result ~= "\tforeach("~ijk~";0..shape["~i.to!string~"])\n";
+            }
         }
-        if(UNIQ.length > 0)
-        {
-            result~= "\t\tresult["~UNIQ~"] += "~getExp!(This,TypeThis,0)[0]~";\n";
-        }
-        else
-        {
-            result~= "\t\tresult += "~getExp!(This,TypeThis,0)[0]~";\n";
-        }
-        if(DMMY.length > 0)
-        {
-            result~= "\t}\n";
-        }
-        if(UNIQ.length > 0)
-        {
-            result~="}";
-        }
+        result~= "\t\tresult += "~getExp!("this",typeof(this),0)[0]~";\n";
+        result~= "\treturn result;\n";
+        result~= "}\n";
        return result;
     }
 
@@ -421,7 +316,7 @@ struct Tree(LHS,RHS,string op,Leafs...)
 
 
 
-struct Leaf(string idx,aTensor)
+struct Leaf(string ResultIdx ="",string idx,aTensor)
 {
     this(aTensor t)
     {
@@ -440,115 +335,62 @@ struct Leaf(string idx,aTensor)
         }
     }
 
+    
+
     aTensor tensor;
     alias Type = aTensor.Type;
-    auto leafs() => [this];
+    @nogc nothrow typeof(this)[1] leafs() => [this];
     alias LeafTypes = AliasSeq!(typeof(this));
 
 
-    auto shape() => tensor.shape;
-    @nogc auto opBinary(string op,R)(R ohs)
+    @nogc nothrow auto shape() => tensor.shape;
+    auto opBinary(string op,R)(R ohs)  @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs),Lhs,Rhs,string OP,Leafs...))
-            return Tree!(typeof(this),R,op,typeof(this),Leafs)(this,ohs,this,ohs.leafs);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,Leafs),string Ridx,Lhs,Rhs,string OP,Leafs...))
+            return Tree!("",typeof(this),R,op,typeof(this),Leafs)(this,ohs,this,ohs.leafs);
         else
-            return Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+            return Tree!("",typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
     }
-    @nogc auto opBinaryRight(string op,R)(R ohs)
+    auto opBinaryRight(string op,R)(R ohs)  @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs),Lhs,Rhs,string OP,Leafs...))
-            return Tree!(R,typeof(this),op,Leafs,typeof(this))(this,ohs,ohs.leafs,this);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,Leafs),string Ridx,Lhs,Rhs,string OP,Leafs...))
+            return Tree!("",R,typeof(this),op,Leafs,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return Tree!(R,typeof(this),op,R,typeof(this))(ohs,this,ohs,this);
+            return Tree!("",R,typeof(this),op,R,typeof(this))(ohs,this,ohs,this);
     }
-    @nogc auto opUnary(string op)()
+    auto opUnary(string op)() @nogc nothrow 
     {
-        return Tree!(Type,typeof(this),op,typeof(this))(cast(Type)0,this,this);
+        return Tree!("",Type,typeof(this),op,typeof(this))(cast(Type)0,this,this);
     }
-    auto evalDummy(string ignr="")()
+    mixin(genCalc);
+    static auto genCalc()
     {
-        return this;
-    }
-    auto eval(string ignr="")()
-    { 
-        alias uniq = Alias!(idx.onlyUniq(ignr));
-        alias dmmy = Alias!(idx.onlyDummy(ignr));
-        static if(uniq.length > 0)
-        {
-            auto result = mixin("gged!(Type)("~getShapes!(typeof(this),"this",uniq)~")");
-        }
-        else
-        {
-            Type result;
-        }
-        static if(dmmy.length > 0)
-        {
-            auto sumgg = mixin("gged!(Empty)("~getShapes!(typeof(this),"this",dmmy)~")");
-        }
-
-
-        mixin(genLoop!(ignr,uniq,dmmy));
-
-        static if(uniq.length > 0)
-        {
-            auto leaf = result.opDispatch!(uniq);
-        }
-        else
-        {
-            auto leaf = result;
-        }
-        return leaf;
-    }
-    static auto genLoop(string ResultIdx="",indexes...)()
-    {
-        string UNIQ = (indexes[0].map!(c=>[c]).join(",").to!string);
+        alias indexes  = getIndex!(typeof(this),ResultIdx);
+        string UNIQ = (indexes[0].map!(c=>"size_t "~[c]).join(",").to!string);
         string DMMY = (indexes[1].map!(c=>[c]).join(",").to!string);
-        string result="";
-        if(UNIQ.length > 0)
-        {
-            result~= "foreach("~UNIQ~";"~"result.index){\n";
-            result~= "\tresult["~UNIQ~"] = 0.;\n";
-        }
-        else
-        {
-            result~= "result = 0.;\n";
-        }
+        string result="auto calc(" ~ UNIQ ~ ") @nogc nothrow {\n";
+        result ~= "\t size_t["~indexes[1].length.to!string~"] shape = [" ~ getShapes!(typeof(this),"this",indexes[1]) ~"];\n";
+        result ~= "\t auto result = cast(Type)0;\n";
+
         if(DMMY.length > 0)
         {
-            result~= "\tforeach("~DMMY~";"~"sumgg.index){\n";
+            static foreach(i,ijk;indexes[1])
+            {
+                result ~= "\tforeach("~ijk~";0..shape["~i.to!string~"])\n";
+            }
         }
-        if(UNIQ.length > 0)
-        {
-            result~= "\t\tresult["~UNIQ~"] += "~getExp!("this",typeof(this),0)[0]~";\n";
-        }
-        else
-        {
-            result~= "\t\tresult += "~getExp!("this",typeof(this),0)[0]~";\n";
-        }
-        if(DMMY.length > 0)
-        {
-            result~= "\t}\n";
-        }
-        if(UNIQ.length > 0)
-        {
-            result~="}";
-        }
-       return result;
+        alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+        result~= "\t\tresult += tensor["~ijk~"];\n";
+        
+        result~= "\treturn result;\n";
+        result~= "}\n";
+        return result;
     }
-}
 
-auto evalDummy(string ignr="",T)(T value)
-{
-    return value;
-}
-
-auto eval(string ignr="",T)(T value)
-{
-    return value;
 }
 
 
-struct Func(alias fun,Leafs...)
+struct Func(string ResultIdx ="",alias fun,Leafs...)
 {
     alias FUN = fun;
     static if(is(ReturnType!fun))
@@ -561,82 +403,29 @@ struct Func(alias fun,Leafs...)
     {
         leafs = args_;
     }
-    auto evalDummy(string ignr="")()
+    
+    mixin(genCalc);
+    static auto genCalc()
     {
-        static foreach(i,Leaf;Leafs)
-        {
-            mixin("auto arg_"~i.to!string ~" = leafs["~i.to!string~"].evalDummy!ignr;");
-        }
-        mixin("return Func!(fun,"~iota(Leafs.length).map!(i=>"typeof(arg_"~i.to!string~"),").join~")("~iota(Leafs.length).map!(i=>"arg_"~i.to!string~",").join~");");
-    }
-    auto eval(string ignr="")()
-    {
-        auto This = evalDummy!ignr;
-        alias Idxes = getIdxList!Leafs;
-        alias uniq = Alias!(onlyUniq([Idxes].join, ignr));
-        alias dmmy = Alias!(onlyDummy([Idxes].join, ignr));
-        static if(uniq.length > 0)
-        {
-            auto result = mixin("gged!(Type)("~getShapes!(typeof(This),"this",uniq)~")");
-        }
-        else
-        {
-            Type result;
-        }
-        static if(dmmy.length > 0)
-        {
-            auto sumgg = mixin("gged!(Empty)("~getShapes!(typeof(This),"this",dmmy)~")");
-        }
-        mixin(genLoop!(ignr,uniq,dmmy));
-
-        static if(uniq.length > 0)
-        {
-            auto leaf = result.opDispatch!(uniq);
-        }
-        else
-        {
-            auto leaf = result;
-        }
-        return leaf;
-    }
-    static auto genLoop(string ResultIdx="",indexes...)()
-    { 
-        string UNIQ = (indexes[0].map!(c=>[c]).join(",").to!string);
+        alias indexes  = getIndex!(typeof(this),ResultIdx);
+        string UNIQ = (indexes[0].map!(c=>"size_t "~[c]).join(",").to!string);
         string DMMY = (indexes[1].map!(c=>[c]).join(",").to!string);
-        string result="";
-        if(UNIQ.length > 0)
-        {
-            result~= "foreach("~UNIQ~";"~"result.index){\n";
-            result~= "\tresult["~UNIQ~"] = 0.;\n";
-        }
-        else
-        {
-            result~= "result = 0.;\n";
-        }
-        if(DMMY.length > 0)
-        {
-            result~= "\tforeach("~DMMY~";"~"sumgg.index){\n";
-        }
-        if(UNIQ.length > 0)
-        {
-            result~= "\t\tresult["~UNIQ~"] += ";
-        }
-        else
-        {
-            result~= "\t\tresult+=";
-        }
-        result ~= asExp ~ ";\n";
-        if(DMMY.length > 0)
-        {
-            result~= "\t}\n";
-        }
-        if(UNIQ.length > 0)
-        {
-            result~="}";
-        }
-       return result;
-    }
+        string result="auto calc(" ~ UNIQ ~ ") @nogc nothrow {\n";
+        result ~= "\t size_t["~indexes[1].length.to!string~"] shape = [" ~ getShapes!(typeof(this),"this",indexes[1]) ~"];\n";
+        result ~= "\t auto result = cast(Type)0;\n";
 
+        if(DMMY.length > 0)
+        {
+            static foreach(i,ijk;indexes[1])
+            {
+                result ~= "\tforeach("~ijk~";0..shape["~i.to!string~"])\n";
+            }
+        }
+        result~= "\t\tresult += "~asExp~";\n";
+        result~= "\treturn result;\n";
+        result~= "}\n";
+        return result;
+    }
     static auto getShape(string This = "this",string ijk)()
     {
         static foreach(i,Node;Leafs)
@@ -662,16 +451,16 @@ struct Func(alias fun,Leafs...)
         string result = This~".FUN(";
         static foreach(i,arg;leafs)
         {{ 
-            static if(is(Leafs[i] == Tree!(LHS,RHS,op,Leafs_),LHS,RHS,string op,Leafs_...))
+            static if(is(Leafs[i] == Tree!(Ridx,LHS,RHS,op,Leafs_),string Ridx,LHS,RHS,string op,Leafs_...))
             {
                 result ~= getExp!(This~".leafs["~i.to!string~"]",Leafs[i],0)[0] ~ ",";
             }
-            else static if(is(Leafs[i] == Leaf!(idx,Tns),string idx,Tns))
+            else static if(is(Leafs[i] == Leaf!(Ridx,idx,Tns),string Ridx,string idx,Tns))
             {
                 alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
                 result ~= This~".leafs["~i.to!string~"].tensor[" ~ijk~"],";
             }
-            else static if(is(Leafs[i] == Func!(fun_,Leafs_),alias fun_,Leafs_...))
+            else static if(is(Leafs[i] == Func!(Ridx,fun_,Leafs_),string Ridx,alias fun_,Leafs_...))
             {
                 result ~= Leafs[i] .asExp!("leafs["~i.to!string~"]")~",";
             }
@@ -688,19 +477,19 @@ struct Func(alias fun,Leafs...)
         result ~= ")";
         return result;
     }
-    @nogc auto opBinary(string op,R)(R ohs)
+    auto opBinary(string op,R)(R ohs)  @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,Leafs_),string Ridx,Lhs,Rhs,string OP,Leafs_...))
+            return Tree!("",typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
         else
-            return Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+            return Tree!("",typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
     }
-    @nogc auto opBinaryRight(string op,R)(R ohs)
+    auto opBinaryRight(string op,R)(R ohs)  @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,Leafs_),string Ridx,Lhs,Rhs,string OP,Leafs_...))
+            return Tree!("",typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
+            return Tree!("",typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
 }
 
@@ -716,23 +505,18 @@ struct FnTensor(string idx,F)
     {
         return "";
     }
-    @nogc auto opBinary(string op,R)(R ohs)
+    auto opBinary(string op,R)(R ohs) @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return Tree!(typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,Leafs_),string Ridx,Lhs,Rhs,string OP,Leafs_...))
+            return Tree!("",typeof(this),R,op,typeof(this),Leafs_)(this,ohs,this,ohs.leafs);
         else
-            return Tree!(typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
+            return Tree!("",typeof(this),R,op,typeof(this),R)(this,ohs,this,ohs);
     }
-    @nogc auto opBinaryRight(string op,R)(R ohs)
+    auto opBinaryRight(string op,R)(R ohs) @nogc nothrow 
     {
-        static if(is(R == Tree!(Lhs,Rhs,OP,Leafs_),Lhs,Rhs,string OP,Leafs_...))
-            return Tree!(typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
+        static if(is(R == Tree!(Ridx,Lhs,Rhs,OP,Leafs_),string Ridx,Lhs,Rhs,string OP,Leafs_...))
+            return Tree!("",typeof(this),R,op,Leafs_,typeof(this))(this,ohs,ohs.leafs,this);
         else
-            return Tree!(typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
+            return Tree!("",typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
-}
-
-struct Empty
-{
-
 }
