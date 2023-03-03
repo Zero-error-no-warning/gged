@@ -152,18 +152,18 @@ struct Gged(T,ulong RANK, SliceKind kind)
     import std.traits;
     static if( __traits(compiles, () {T itr; itr[0] = Type.init; } ))
     {
-        @nogc nothrow auto opIndexAssign(Type value,IndexVec!Rank args){
-            return gged(_slice.opIndexAssign(value,args.idx.tupleof));
+        @nogc nothrow auto opIndexAssign(AssignType)(AssignType value,IndexVec!Rank args){
+            _slice.opIndexAssign(value,args.idx.tupleof);
         }
         
         static foreach(N; 1 .. Rank-1)
         {
-            @nogc nothrow auto opIndexAssign(Args...)(Type value,IndexVec!(Rank-N) args1,Args args2) if(Args.length == N) {
-                return gged(_slice.opIndex(value,args1.idx.tupleof,args2));
+            @nogc nothrow auto opIndexAssign(AssignType,Args...)(AssignType value,IndexVec!(Rank-N) args1,Args args2) if(Args.length == N) {
+                _slice.opIndexAssign(value,args1.idx.tupleof,args2);
             }
         }
-        @nogc nothrow auto opIndexAssign(Args...)(Type value,Args args) if(Args.length == Rank)  {
-            return gged(_slice.opIndexAssign(value,args));
+        @nogc nothrow auto opIndexAssign(AssignType,Args...)(AssignType value,Args args) if(Args.length == Rank)  {
+            _slice.opIndexAssign(value,args);
         }
     }
     @nogc nothrow auto opDollar(ulong dim)(){
