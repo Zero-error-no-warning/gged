@@ -8,6 +8,16 @@ struct IndexVec(size_t dim)
 	SerialIndex[dim] idx;
 	alias Dim = dim;
     alias idx this;
+	@nogc IndexVec!dim unit(ulong n)
+	{
+		auto vec = this;
+		foreach(i; 0..dim)
+		{
+			vec[i] = 0;
+		}
+		vec[n] = 1;
+		return vec;
+	}
     @nogc void opBinary(string op,N)(N[dim] rhs)
     {
         SerialIndex[dim] result;
