@@ -18,18 +18,18 @@ struct IndexVec(size_t dim)
 		vec[n] = 1;
 		return vec;
 	}
-    @nogc void opBinary(string op,N)(N[dim] rhs)
+    @nogc auto opBinary(string op,N)(N[dim] rhs)
     {
-        SerialIndex[dim] result;
+        SerialIndex[dim] result = idx;
         foreach(i; 0 .. dim)
         {
             result[i] = mixin("idx[i]" ~ op ~ "rhs[i]");
         }
         return IndexVec!dim(result);
     }
-    @nogc void opBinaryRight(string op,N)(N[dim] lhs)
+    @nogc auto opBinaryRight(string op,N)(N[dim] lhs)
     {
-        SerialIndex[dim] result;
+        SerialIndex[dim] result = idx;
         foreach(i; 0 .. dim)
         {
             result[i] = mixin("lhs[i]" ~ op ~ "idx[i]");
@@ -50,6 +50,24 @@ struct IndexVec(size_t dim)
         }
         return instantWrite!", "(idx);
     }
+	@nogc auto clamp()
+	{
+        SerialIndex[dim] result = idx;
+		foreach(i;0..dim)
+		{
+			result[i] = idx[i].clamp;
+		}
+		return IndexVec!dim(result);
+	}
+	@nogc auto loop()
+	{
+        SerialIndex[dim] result = idx;
+		foreach(i;0..dim)
+		{
+			result[i] = idx[i].loop;
+		}
+		return IndexVec!dim(result);
+	}
 }
         
 struct SerialIndex
