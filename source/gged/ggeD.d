@@ -46,26 +46,39 @@ private struct IndexLoop(GGED)
     GGED gg;
     alias TypeSerialIndex = Repeat!(Rank,SerialIndex);
     int opApply(int delegate(TypeSerialIndex) fun) {
-        mixin(genLoop);
+        mixin(genLoop!(false,0));
         return 1;
     }
     alias Rank = GGED.Rank;
     static if(Rank > 1)
+    {
         int opApply(int delegate(IndexVec!(Rank)) fun) {
-        mixin(genLoop!true);
-        return 1;
+            mixin(genLoop!(true,0));
+            return 1;
+        }
+        static foreach(N ; 1 .. Rank -1)
+        {
+            int opApply(int delegate(IndexVec!(Rank-N),Repeat!(N,SerialIndex)) fun) {
+                mixin(genLoop!(true,N));
+                return 1;
+            }
+        }
     }
-    static string genLoop(bool vec = false)(){
+    static string genLoop(bool vec,ulong N)(){
         string result;
         static foreach(idx;0..Rank){
-            result ~= "foreach(_" ~idx.to!string~ ";0 .. gg._slice.shape["~idx.to!string~"])";
+            result ~= "foreach(_" ~idx.to!string~ ";0 .. gg._slice.shape["~idx.to!string~"])\n";
         }
         result ~= "fun(";
-       	static if(vec) result ~= "IndexVec!Rank([";
-        static foreach(idx;0..Rank){
+
+       	static if(vec) result ~= "IndexVec!(Rank-"~N.to!string ~")([";
+        static foreach(idx;0..Rank-N)
 	        result ~= "SerialIndex(_" ~idx.to!string ~",gg._slice.shape["~idx.to!string~"]),";
-        }
-       	static if(vec) result ~= "])";
+       	static if(vec) result ~= "]),";
+
+        static foreach(idx;Rank - N .. Rank)
+            result ~=  "SerialIndex(_" ~idx.to!string ~",gg._slice.shape["~idx.to!string~"]),";
+
         result ~= ");";
         return result;
     }
@@ -110,7 +123,13 @@ struct Gged(T,ulong RANK, SliceKind kind)
     @nogc nothrow auto opIndex(IndexVec!Rank args){
         return gged(_slice.opIndex(args.idx.tupleof));
     }
-    @nogc nothrow auto opIndex(Args...)(Args args){
+    static foreach(N; 1 .. Rank-1)
+    {
+        @nogc nothrow auto opIndex(Args...)(IndexVec!(Rank-N) args1,Args args2) if(Args.length == N) {
+            return gged(_slice.opIndex(args1.idx.tupleof,args2));
+        }
+    }
+    @nogc nothrow auto opIndex(Args...)(Args args) if(Args.length == Rank) {
         return gged(_slice.opIndex(args));
     }
     import std.traits;
@@ -119,7 +138,14 @@ struct Gged(T,ulong RANK, SliceKind kind)
         @nogc nothrow auto opIndexAssign(Type value,IndexVec!Rank args){
             return gged(_slice.opIndexAssign(value,args.idx.tupleof));
         }
-        @nogc nothrow auto opIndexAssign(Args...)(Type value,Args args){
+        
+        static foreach(N; 1 .. Rank-1)
+        {
+            @nogc nothrow auto opIndexAssign(Args...)(Type value,IndexVec!(Rank-N) args1,Args args2) if(Args.length == N) {
+                return gged(_slice.opIndex(value,args1.idx.tupleof,args2));
+            }
+        }
+        @nogc nothrow auto opIndexAssign(Args...)(Type value,Args args) if(Args.length == Rank)  {
             return gged(_slice.opIndexAssign(value,args));
         }
     }
