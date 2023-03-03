@@ -84,6 +84,20 @@ private struct IndexLoop(GGED)
     }
 }
 
+private string genPick(ulong n,string value,ulong Rank)
+{
+    string result =  "return this[";
+    foreach(i ; 0..Rank)
+    {
+        if(i == n )
+            result ~= value~",";
+        else
+            result ~= "0 .. $,";
+    }
+    result ~= "];";
+    return result;
+}
+
 struct Gged(T,ulong RANK, SliceKind kind)
 {
 	import mir.ndslice;
@@ -111,7 +125,10 @@ struct Gged(T,ulong RANK, SliceKind kind)
     }
     auto toString()=>_slice.to!string;
 
-
+    @nogc nothrow auto pick(ulong n)(ulong value)
+    {
+        mixin(genPick(n,"value",Rank));
+    }
     @nogc nothrow auto opSlice(X,Y)(X start, Y end) if(is(X == SerialIndex) && is(Y == SerialIndex))
     {
         return gged(_slice.opSlice(start,end));
