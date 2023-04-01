@@ -205,7 +205,7 @@ template getExp(string This,Node,ulong N)
     }
     else static if(is(Node == Leaf!(Ridx,idx,Ts),string Ridx,string idx,Ts))
     {
-        alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+        alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
         alias getExp = AliasSeq!(This~".leafs["~N.to!string~"].tensor["~ijk~"]",N+1);
     }
     else static if(is(Node == Func!(Ridx,fun,Leafs),string Ridx,alias fun,Leafs...))
@@ -214,7 +214,7 @@ template getExp(string This,Node,ulong N)
     }
     else static if(is(Node == FnTensor!(idx,F),string idx,F))
     {
-        alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+        alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
         alias getExp = AliasSeq!(This~".leafs["~N.to!string~"].FUN("~ijk~")",N+1);
     }
     else
@@ -379,7 +379,7 @@ struct Leaf(string ResultIdx ="",string idx,aTensor)
                 result ~= "\tforeach("~ijk~";0..shape["~i.to!string~"])\n";
             }
         }
-        alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+        alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
         result~= "\t\tresult += tensor["~ijk~"];\n";
         
         result~= "\treturn result;\n";
@@ -457,7 +457,7 @@ struct Func(string ResultIdx ="",alias fun,Leafs...)
             }
             else static if(is(Leafs[i] == Leaf!(Ridx,idx,Tns),string Ridx,string idx,Tns))
             {
-                alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+                alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
                 result ~= This~".leafs["~i.to!string~"].tensor[" ~ijk~"],";
             }
             else static if(is(Leafs[i] == Func!(Ridx,fun_,Leafs_),string Ridx,alias fun_,Leafs_...))
@@ -466,7 +466,7 @@ struct Func(string ResultIdx ="",alias fun,Leafs...)
             }
             else static if(is(Leafs[i] == FnTensor!(idx,F),string idx,F))
             {
-                alias ijk = Alias!(idx.replace("_","").map!(c=>[c]).join(",").to!string);
+                alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
                 result ~= Leafs[i]~".leafs["~i.to!string~"].FUN("~ijk~"),";
             }
             else

@@ -24,9 +24,9 @@ auto gged(T,R,Args...)(R value,Args xyz) if(isInputRange!(Unqual!R))
     return gg;
 }
 
-auto gged(T,N)(ulong[N] xyz)  
+auto gged(T,size_t N)(ulong[N] xyz)  
 {
-    return Gged!(T*,Args.length,mir_slice_kind.contiguous)(slice!(T)(xyz));
+    return Gged!(T*,N,mir_slice_kind.contiguous)(slice!(T)(xyz));
 }
 auto gged(T,Args...)(Args xyz)  if(allSameType!(Args) && isIntegral!(Args[0])) 
 {
@@ -43,8 +43,11 @@ T gged(T)(T value) if(!__traits(isSame, TemplateOf!(T), Slice))
 
 private struct IndexLoop(GGED) 
 {
+    private alias MakeSerialIndex(X) =  SerialIndex!X;
     GGED gg;
-    alias TypeSerialIndex = Repeat!(Rank,SerialIndex);
+    alias IndexTypes =GGED.IndexTypes;
+    alias TypeSerialIndex = staticMap!(MakeSerialIndex,IndexTypes);
+
     int opApply(int delegate(TypeSerialIndex) fun) {
         mixin(genLoop!(false,0));
         return 1;
@@ -52,13 +55,13 @@ private struct IndexLoop(GGED)
     alias Rank = GGED.Rank;
     static if(Rank > 1)
     {
-        int opApply(int delegate(IndexVec!(Rank)) fun) {
+        int opApply(int delegate(IndexVec!(IndexTypes)) fun) {
             mixin(genLoop!(true,0));
             return 1;
         }
         static foreach(N ; 1 .. Rank -1)
         {
-            int opApply(int delegate(IndexVec!(Rank-N),Repeat!(N,SerialIndex)) fun) {
+            int opApply(int delegate(IndexVec!(IndexTypes[0..Rank-N]),IndexTypes[Rank-N .. $]) fun) {
                 mixin(genLoop!(true,N));
                 return 1;
             }
@@ -71,43 +74,91 @@ private struct IndexLoop(GGED)
         }
         result ~= "fun(";
 
-       	static if(vec) result ~= "IndexVec!(Rank-"~N.to!string ~")([";
+       	static if(vec) result ~= "IndexVec!(IndexTypes[0..Rank-"~N.to!string~"])(";
         static foreach(idx;0..Rank-N)
-	        result ~= "SerialIndex(_" ~idx.to!string ~",gg._slice.shape["~idx.to!string~"]),";
-       	static if(vec) result ~= "]),";
+	        result ~= "SerialIndex!(IndexTypes["~idx.to!string~"])(gg.invIndex!"~idx.to!string~"(_" ~idx.to!string ~"),gg._slice.shape["~idx.to!string~"],gg.offsets["~idx.to!string~"]),";
+       	static if(vec) result ~= "),";
 
         static foreach(idx;Rank - N .. Rank)
-            result ~=  "SerialIndex(_" ~idx.to!string ~",gg._slice.shape["~idx.to!string~"]),";
+            result ~=  "SerialIndex!(IndexTypes["~idx.to!string~"])(gg.invIndex!"~idx.to!string~"(_" ~idx.to!string ~"),gg._slice.shape["~idx.to!string~"],gg.offsets["~idx.to!string~"]),";
 
         result ~= ");";
         return result;
     }
 }
 
-private string genPick(ulong n,string value,ulong Rank)
+@nogc nothrow auto setOffset(GGED,Args...)(GGED gged,Args offsets) if(is(GGED == Gged!(T,Rank,kind,Types),T,ulong Rank,SliceKind kind,Types...) &&  Args.length == Rank)
 {
-    string result =  "return this[";
-    foreach(i ; 0..Rank)
-    {
-        if(i == n )
-            result ~= value~",";
-        else
-            result ~= "0 .. $,";
-    }
-    result ~= "];";
-    return result;
+    return Gged!(GGED.TypePointer,GGED.Rank,GGED.Kind,Args)(gged._slice,offsets);
 }
 
-struct Gged(T,ulong RANK, SliceKind kind)
+@nogc nothrow auto setOffset(R,Args...)(R value,Args offsets) if(!is(R == Gged!(T,Rank,kind,Types),T,ulong Rank,SliceKind kind,Types...) )
+{
+    return value;
+}
+
+struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length == RANK || IndexTypes_.length == 0)
 {
 	import mir.ndslice;
     alias SliceType = Slice!(T, Rank, kind);
     SliceType _slice;
     alias Kind = kind;
+
+    static if(IndexTypes_.length == 0)
+        alias IndexTypes = Repeat!(RANK,size_t);
+    else
+        alias IndexTypes = IndexTypes_;
+    IndexTypes offsets = 0;
+
+    private size_t getIndex(ulong n,Arg)(Arg idx)
+    {
+        return cast(size_t)(idx-offsets[n]);
+    }
+
+    auto dup()
+    {
+        auto d = gged!(Type)(shape).setOffset(offsets);
+        foreach(ijk;this.index)
+        {
+            d[ijk] = this[ijk];
+        }
+        return d;
+    }
+
+    private IndexTypes[n] invIndex(ulong n)(size_t idx)
+    {
+        return cast(IndexTypes[n])(idx+offsets[n]);
+    }
+    private auto getIndexes(Args...)(Args idxs) if(Args.length == RANK)
+    {
+        template Filting(X)
+        {
+            static if(isContiguousSlice!X) alias Filting = X;
+            else alias Filting = size_t;
+        }
+        struct Dummy{
+            staticMap!(Filting,Args) value;
+            alias value this;
+        }
+        Dummy result;
+        static foreach(i;0..RANK)
+        {
+            static if(isContiguousSlice!(Args[i])) 
+                result[i] =  idxs[i];
+            else
+                result[i] = getIndex!i(idxs[i]);
+        }
+        return result;
+    }
+    
     
     static if(isPointer!T)
     {
     	alias Type = PointerTarget!T;
+    }
+    else static if(isArray!T)
+    {
+        alias Type = ElementType!T;
     }
     else
     {
@@ -125,54 +176,71 @@ struct Gged(T,ulong RANK, SliceKind kind)
     }
     auto toString()=>_slice.to!string;
 
-    @nogc nothrow auto pick(ulong n)(ulong value)
+    template pick(ns...)
     {
-        mixin(genPick(n,"value",Rank));
+        @nogc nothrow auto pick(Args...)(Args value)
+        {
+            pragma(msg,genPick([ns]));
+            mixin(genPick([ns]));
+        }
     }
-    @nogc nothrow auto opSlice(X,Y)(X start, Y end) if(is(X == SerialIndex) && is(Y == SerialIndex))
+        
+    private static string genPick(ulong[] ns)
+    {
+        string result =  "return this[";
+        foreach(i ; 0..Rank)
+        {
+            if(!ns.canFind(i))
+                result ~= "getIndex!"~i.to!string~"(value["~i.to!string~"]),";
+            else
+                result ~= "offsets["~i.to!string~"] .. $,";
+        }
+        result ~= "];";
+        return result;
+    }
+    @nogc nothrow auto opSlice(X,Y)(X start, Y end) if(RANK == 1 && is(X == SerialIndex!(IndexTypes[0])) && is(Y == SerialIndex!(IndexTypes[0])))
     {
         return gged(_slice.opSlice(start,end));
     }
     @nogc nothrow auto opSlice(size_t dim,X,Y)(X start, Y end) 
     {
-        return _slice.opSlice!dim(start,end);
+        return _slice.opSlice!dim(getIndex!dim(start),getIndex!dim(end));
     }
-    @nogc nothrow auto opIndex(IndexVec!Rank args){
-        return gged(_slice.opIndex(args.idx.tupleof));
+    @nogc nothrow auto opIndex(IndexVec!(IndexTypes) args){
+        return gged(_slice.opIndex(getIndexes(args.idx).value ));
     }
     static foreach(N; 1 .. Rank-1)
     {
-        @nogc nothrow auto opIndex(Args...)(IndexVec!(Rank-N) args1,Args args2) if(Args.length == N) {
-            return gged(_slice.opIndex(args1.idx.tupleof,args2));
+        @nogc nothrow auto opIndex(Args...)(IndexVec!(RIndexTypes[0..Rank-N]) args1,Args args2) if(Args.length == N) {
+            return gged(_slice.opIndex(getIndexes(args1.idx,args2).value));
         }
     }
     @nogc nothrow auto opIndex(Args...)(Args args) if(Args.length == Rank) {
-        return gged(_slice.opIndex(args));
+        return gged(_slice.opIndex(getIndexes(args).value));
     }
     import std.traits;
     static if( __traits(compiles, () {T itr; itr[0] = Type.init; } ))
     {
-        @nogc nothrow auto opIndexAssign(AssignType)(AssignType value,IndexVec!Rank args){
-            _slice.opIndexAssign(value,args.idx.tupleof);
+        @nogc nothrow auto opIndexAssign(AssignType)(AssignType value,IndexVec!(IndexTypes) args){
+            _slice.opIndexAssign(value,getIndexes(args.idx).value);
         }
         
         static foreach(N; 1 .. Rank-1)
         {
-            @nogc nothrow auto opIndexAssign(AssignType,Args...)(AssignType value,IndexVec!(Rank-N) args1,Args args2) if(Args.length == N) {
-                _slice.opIndexAssign(value,args1.idx.tupleof,args2);
+            @nogc nothrow auto opIndexAssign(AssignType,Args...)(AssignType value,IndexVec!(IndexTypes[0..Rank-N])  args1,Args args2) if(Args.length == N) {
+                _slice.opIndexAssign(value,getIndexes(args1.idx,args2).value);
             }
         }
         @nogc nothrow auto opIndexAssign(AssignType,Args...)(AssignType value,Args args) if(Args.length == Rank)  {
-            _slice.opIndexAssign(value,args);
+            _slice.opIndexAssign(value,getIndexes(args).value);
         }
     }
     @nogc nothrow auto opDollar(ulong dim)(){
-        return _slice.opDollar!dim;
+        return invIndex!dim(_slice.opDollar!dim);
     }
-    @nogc nothrow auto opDispatch(string idx)()
+    @nogc nothrow auto opDispatch(string idx)() if(idx.replace("_","").length == Rank)
     {
-        static assert(idx.length ==Rank,"index notation length should be same as the tensor Rank");
-        return Leaf!("",idx,typeof(this))(this);
+        return Leaf!("",idx.replace("_",""),typeof(this))(this);
     }
     auto opEquals(RHS)(RHS rhs)
     {
@@ -189,5 +257,23 @@ struct Gged(T,ulong RANK, SliceKind kind)
         {
             return _slice == rhs;
         }
+    }
+
+    auto opBinary(string op,GGED)(GGED rhs) 
+    {
+        static if(is(GGED==Gged!(T2,RANK2,kind2,IndexTypes_2),T2 ,ulong RANK2, SliceKind kind2,IndexTypes_2...))
+            return _slice.opBinary!(op,T2,RANK2,kind2)(rhs._slice).gged.setOffset(offsets);
+        else
+            return _slice.opBinary!(op,GGED)(rhs).gged.setOffset(offsets);
+    }
+    
+    auto opUnary(string op)()
+        if (op == "*" || op == "~" || op == "-" || op == "+")
+    {
+        import mir.ndslice.topology: map;
+        static if (op == "+")
+            return this;
+        else
+            return _slice.opUnary!op.gged.setOffset(offsets);
     }
 }

@@ -1,4 +1,4 @@
-module gged.iterator;
+module ggeD.iterator;
 import mir.qualifier;
 import mir.ndslice;
 import std.traits;
