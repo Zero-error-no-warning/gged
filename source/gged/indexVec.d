@@ -20,6 +20,7 @@ struct IndexVec(IndexTypes...)
 		vec[n] = 1;
 		return vec;
 	}
+	alias tupleof = idx;
     @nogc auto opBinary(string op,OtherIndexTypes...)(IndexVec!(OtherIndexTypes) rhs) if(OtherIndexTypes.length == Dim)
     {
         SrialIndexes result = idx;

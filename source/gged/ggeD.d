@@ -174,13 +174,26 @@ struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length =
     @nogc nothrow auto index(){
         return IndexLoop!(typeof(this))(this);
     }
+
+    private  template Iota(ulong from, ulong to)
+    {
+        alias Iota = AliasSeq!();
+        static foreach(i; from .. to)
+        {
+            Iota = AliasSeq!(Iota,i);
+        }
+    }
+    @nogc nothrow auto index(ulong N1,ulong N2)(){
+        auto newone = this.pick!(Iota!(N1,N2))(offsets).setOffset(offsets[N1..N2]);
+        return IndexLoop!(typeof(newone))(newone);
+    }
+    
     auto toString()=>_slice.to!string;
 
     template pick(ns...)
     {
         @nogc nothrow auto pick(Args...)(Args value)
         {
-            pragma(msg,genPick([ns]));
             mixin(genPick([ns]));
         }
     }
@@ -191,7 +204,7 @@ struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length =
         foreach(i ; 0..Rank)
         {
             if(!ns.canFind(i))
-                result ~= "getIndex!"~i.to!string~"(value["~i.to!string~"]),";
+                result ~= "value["~i.to!string~"],";
             else
                 result ~= "offsets["~i.to!string~"] .. $,";
         }
@@ -211,7 +224,7 @@ struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length =
     }
     static foreach(N; 1 .. Rank-1)
     {
-        @nogc nothrow auto opIndex(Args...)(IndexVec!(RIndexTypes[0..Rank-N]) args1,Args args2) if(Args.length == N) {
+        @nogc nothrow auto opIndex(Args...)(IndexVec!(IndexTypes[0..Rank-N]) args1,Args args2) if(Args.length == N) {
             return gged(_slice.opIndex(getIndexes(args1.idx,args2).value));
         }
     }
