@@ -26,15 +26,15 @@ auto gged(T,R,Args...)(R value,Args xyz) if(isInputRange!(Unqual!R))
 
 auto gged(T,size_t N)(ulong[N] xyz)  
 {
-    return Gged!(T*,N,mir_slice_kind.contiguous)(slice!(T)(xyz));
+    return GgedStruct!(T*,N,false,mir_slice_kind.contiguous)(slice!(T)(xyz));
 }
 auto gged(T,Args...)(Args xyz)  if(allSameType!(Args) && isIntegral!(Args[0])) 
 {
-    return Gged!(T*,Args.length,mir_slice_kind.contiguous)(slice!(T)(xyz));
+    return GgedStruct!(T*,Args.length,false,mir_slice_kind.contiguous)(slice!(T)(xyz));
 }
 auto gged(X,ulong Y,SliceKind Z)(Slice!(X,Y,Z) slice_) 
 {
-    return Gged!(X,Y, Z)(slice_);
+    return GgedStruct!(X,Y,false, Z)(slice_);
 }
 T gged(T)(T value) if(!__traits(isSame, TemplateOf!(T), Slice))
 {
@@ -87,27 +87,40 @@ private struct IndexLoop(GGED)
     }
 }
 
-@nogc nothrow auto setOffset(GGED,Args...)(GGED gged,Args offsets) if(is(GGED == Gged!(T,Rank,kind,Types),T,ulong Rank,SliceKind kind,Types...) &&  Args.length == Rank)
+@nogc nothrow auto setOffset(GGED,ulong Rank)(GGED gged,double[Rank] offsets) if(is(GGED == GgedStruct!(T,Rank,isOffsetIndex,kind),T,bool isOffsetIndex,SliceKind kind))
 {
-    return Gged!(GGED.TypePointer,GGED.Rank,GGED.Kind,Args)(gged._slice,offsets);
+    return GgedStruct!(GGED.TypePointer,GGED.Rank,true,GGED.Kind)(gged._slice,offsets.tupleof);
 }
 
-@nogc nothrow auto setOffset(R,Args...)(R value,Args offsets) if(!is(R == Gged!(T,Rank,kind,Types),T,ulong Rank,SliceKind kind,Types...) )
+@nogc nothrow auto setOffset(R,ulong Rank)(R value,double[Rank] offsets) if(!is(R == GgedStruct!(T,Rank,isOffsetIndex,kind),T,bool isOffsetIndex,SliceKind kind) )
 {
     return value;
 }
 
-struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length == RANK || IndexTypes_.length == 0)
+
+@nogc nothrow auto setOffset(GGED,Args...)(GGED gged,Args offsets) 
+{
+    static if(is(GGED == GgedStruct!(T,Rank,isOffsetIndex,kind),T,ulong Rank,bool isOffsetIndex,SliceKind kind) && Args.length == Rank && allSatisfy!(isFloatingPoint,Args))
+    return GgedStruct!(GGED.TypePointer,GGED.Rank,true,GGED.Kind)(gged._slice,offsets);
+    else
+    return gged;
+}
+
+
+alias Gged(T,ulong Rank, bool isOffsetIndex = false) = GgedStruct!(T*,Rank,isOffsetIndex);
+
+struct GgedStruct(T,ulong RANK, bool isOffsetIndex = false,SliceKind kind = SliceKind.contiguous)
 {
 	import mir.ndslice;
     alias SliceType = Slice!(T, Rank, kind);
     SliceType _slice;
     alias Kind = kind;
 
-    static if(IndexTypes_.length == 0)
-        alias IndexTypes = Repeat!(RANK,size_t);
+    static if(isOffsetIndex)
+        alias IndexTypes = Repeat!(RANK,double);
     else
-        alias IndexTypes = IndexTypes_;
+        alias IndexTypes = Repeat!(RANK,size_t);
+
     IndexTypes offsets = 0;
 
     private size_t getIndex(ulong n,Arg)(Arg idx)
@@ -257,7 +270,7 @@ struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length =
     }
     auto opEquals(RHS)(RHS rhs)
     {
-        static if(is(RHS == Gged!(T2,RANK,kind2),T2,SliceKind kind2))
+        static if(is(RHS == GgedStruct!(T2,RANK,isOffsetIndex2,kind2),T2,bool isOffsetIndex2,SliceKind kind2))
         {
             bool result = true;
             foreach(ijk ; index)
@@ -274,7 +287,7 @@ struct Gged(T,ulong RANK, SliceKind kind,IndexTypes_...) if(IndexTypes_.length =
 
     auto opBinary(string op,GGED)(GGED rhs) 
     {
-        static if(is(GGED==Gged!(T2,RANK2,kind2,IndexTypes_2),T2 ,ulong RANK2, SliceKind kind2,IndexTypes_2...))
+        static if(is(GGED==GgedStruct!(T2,RANK2,isOffsetIndex2,kind2),T2,bool isOffsetIndex2,SliceKind kind2))
             return _slice.opBinary!(op,T2,RANK2,kind2)(rhs._slice).gged.setOffset(offsets);
         else
             return _slice.opBinary!(op,GGED)(rhs).gged.setOffset(offsets);
