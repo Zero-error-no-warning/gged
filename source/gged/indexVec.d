@@ -14,19 +14,32 @@ struct IndexVec(IndexTypes...)
 	alias Dim = Alias!(IndexTypes.length);
 	alias Rank = Dim;
     alias idx this;
-	@nogc size_t[Dim] unit(ulong n)
+	@nogc typeof(this) unit(ulong n)
 	{
-		size_t[Dim] vec = 0;
-		vec[n] = 1;
+		IndexVec!(IndexTypes) vec;
+		static foreach(i;0..Dim)
+		{
+			vec[i] = i == n ? 1 : 0;
+		}
 		return vec;
 	}
+	
 	alias tupleof = idx;
     @nogc auto opBinary(string op,OtherIndexTypes...)(IndexVec!(OtherIndexTypes) rhs) if(OtherIndexTypes.length == Dim)
     {
         SrialIndexes result = idx;
-        foreach(i; 0 .. Dim)
+        static foreach(i; 0 .. Dim)
         {
             result[i] = mixin("idx[i]" ~ op ~ "rhs[i]");
+        }
+        return IndexVec!(IndexTypes)(result);
+    }
+    @nogc auto opBinary(string op,N)(N rhs) if(isNumeric!N && (op=="/" || op=="*"))
+    {
+        SrialIndexes result = idx;
+        static foreach(i; 0 .. Dim)
+        {
+            result[i] = mixin("idx[i]" ~ op ~ "rhs");
         }
         return IndexVec!(IndexTypes)(result);
     }
