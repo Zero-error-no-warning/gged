@@ -139,6 +139,12 @@ template filterTensors(Leafs...)
         alias filterTensors = AliasSeq!(filterTensors!(Leafs[0]),filterTensors!(Leafs[1..$]));
     }
 }
+string removeCharacters(string A, string B)
+{
+    // 文字列Bに含まれる文字をフィルタリングして削除する
+    return A.filter!(c => !B.canFind(c)).array.to!string;
+}
+
 template getIndex(Node,string ignr = "")
 {
     template getunq(Leaf)
@@ -155,11 +161,14 @@ template getIndex(Node,string ignr = "")
         alias RHS = getIndex!(R,ignr);
         static if(OP == "*" || OP == "/")
         {
-            alias getIndex = AliasSeq!((LHS[0]~LHS[1]~RHS[0]~RHS[1]).onlyUniq(ignr),(LHS[0]~LHS[1]~RHS[0]~RHS[1]).onlyDummy(ignr));
+            // alias getIndex = AliasSeq!((LHS[0]~RHS[0]~LHS[1]~RHS[1]).onlyUniq(ignr),((LHS[0]~RHS[0]).onlyDummy(ignr)~LHS[1]~RHS[1]).array.sort.uniq.array.to!string);
+            alias getIndex = AliasSeq!((LHS[0]~RHS[0]~LHS[1]~RHS[1]).onlyUniq(ignr).removeCharacters(LHS[1]~RHS[1]),((LHS[0]~RHS[0]).onlyDummy(ignr)~LHS[1]~RHS[1]).array.sort.uniq.array.to!string);
+            // alias getIndex = AliasSeq!((LHS[0]~RHS[0]~LHS[1]~RHS[1]).onlyUniq(ignr),(LHS[0]~RHS[0]~LHS[1]~RHS[1]).onlyDummy(ignr));
         }
         else 
         {
-            alias getIndex = AliasSeq!((LHS[0].onlyUniq(ignr)~RHS[0].onlyUniq(ignr)).array.sort.uniq.array.to!string ,"");
+            alias getIndex = AliasSeq!((LHS[0]~RHS[0]).array.sort.uniq.array.to!string ,"");
+            // alias getIndex = AliasSeq!((LHS[0]~RHS[0]).onlyUniq(ignr),((LHS[0]~RHS[0]).onlyDummy(ignr)~LHS[1]~RHS[1]).array.sort.uniq.array.to!string);
         }
     }
     else static if(is(Node == Leaf!(Ridx,idx,Ts),string Ridx,string idx,Ts))
@@ -201,27 +210,36 @@ template getExp(string This,Node,ulong N)
 {
     static if(is(Node == Tree!(Ridx,L,R,OP,Leafs),string Ridx,L,R,string OP,Leafs...))
     {
-        alias LHS = getExp!(This,L,N);
-        alias RHS = getExp!(This,R,LHS[1]);
-        alias getExp = AliasSeq!("("~LHS[0]~")" ~ OP ~ "("~RHS[0]~")",RHS[1]);
+            alias LHS = getExp!(This~"._lhs",L,N);
+            alias RHS = getExp!(This~"._rhs",R,LHS[1]);
+        static if(OP == "+" || OP =="-")
+        {
+            alias argsL  = Alias!(getIndex!(L,Ridx)[0].map!"[a]".join(",").to!string);
+            alias argsR  = Alias!(getIndex!(R,Ridx)[0].map!"[a]".join(",").to!string);
+            alias getExp = AliasSeq!(This~"._lhs.calc("~argsL~")"  ~ OP ~ This~"._rhs.calc("~argsR~")" ,RHS[1]);
+        }
+        else
+        {
+            alias getExp = AliasSeq!("("~LHS[0]~")" ~ OP ~ "("~RHS[0]~")",RHS[1]);
+        }
     }
     else static if(is(Node == Leaf!(Ridx,idx,Ts),string Ridx,string idx,Ts))
     {
         alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
-        alias getExp = AliasSeq!(This~".leafs["~N.to!string~"].tensor["~ijk~"]",N+1);
+        alias getExp = AliasSeq!(This~".tensor["~ijk~"]",N+1);
     }
     else static if(is(Node == Func!(Ridx,fun,Leafs),string Ridx,alias fun,Leafs...))
     {
-        alias getExp = AliasSeq!(Node.asExp!(This~".leafs["~N.to!string~"]"),N+1);
+        alias getExp = AliasSeq!(Node.asExp!(This),N+1);
     }
     else static if(is(Node == FnTensor!(idx,F),string idx,F))
     {
         alias ijk = Alias!(idx.map!(c=>[c]).join(",").to!string);
-        alias getExp = AliasSeq!(This~".leafs["~N.to!string~"].FUN("~ijk~")",N+1);
+        alias getExp = AliasSeq!(This~".FUN("~ijk~")",N+1);
     }
     else
     {
-        alias getExp = AliasSeq!(This~".leafs["~N.to!string~"]",N+1);
+        alias getExp = AliasSeq!(This,N+1);
     }
 }
 template CommonTypeOfTensors(Leafs...)
@@ -277,20 +295,29 @@ struct Tree(string ResultIdx ="",LHS,RHS,string op,Leafs...)
         alias indexes  = getIndex!(typeof(this),ResultIdx);
         string UNIQ = (indexes[0].map!(c=>"size_t "~[c]).join(",").to!string);
         string DMMY = (indexes[1].map!(c=>[c]).join(",").to!string);
-        string result="auto calc(" ~ UNIQ ~ ") @nogc nothrow {\n";
-        result ~= "\t size_t["~indexes[1].length.to!string~"] shape = [" ~ getShapes!(typeof(this),"this",indexes[1]) ~"];\n";
-        result ~= "\t auto result = cast(Type)0;\n";
-
-        if(DMMY.length > 0)
+        string result= "auto calc("~ UNIQ ~") @nogc nothrow{\n";
+        static if(false && (op=="+"||op=="-") && (getIndex!(LHS,ResultIdx)[1].length > 0 || getIndex!(RHS,ResultIdx)[1].length > 0))
         {
-            static foreach(i,ijk;indexes[1])
-            {
-                result ~= "\tforeach("~ijk~";0..shape["~i.to!string~"])\n";
-            }
+            string argsL  = getIndex!(LHS,ResultIdx)[0].map!"[a]".join(",").to!string;
+            string argsR  = getIndex!(RHS,ResultIdx)[0].map!"[a]".join(",").to!string;
+            result ~= "\t return _lhs.calc("~argsL~")" ~ op ~"_rhs.calc("~argsR~");\n";
+            result ~="}\n";
         }
-        result~= "\t\tresult += "~getExp!("this",typeof(this),0)[0]~";\n";
-        result~= "\treturn result;\n";
-        result~= "}\n";
+        else
+        {
+            result ~= "\t size_t["~indexes[1].length.to!string~"] shape = [" ~ getShapes!(typeof(this),"this",indexes[1]) ~"];\n";
+            result ~= "\t auto result = cast(Type)0;\n";
+            if(DMMY.length > 0)
+            {
+                static foreach(i,ijk;indexes[1])
+                {
+                    result ~= "\tforeach("~ijk~";0..shape["~i.to!string~"])\n";
+                }
+            }
+            result~= "\t\tresult += "~getExp!("this",typeof(this),0)[0]~";\n";
+            result~= "\treturn result;\n";
+            result~= "}\n";
+        }
        return result;
     }
 
@@ -521,4 +548,9 @@ struct FnTensor(string idx,F)
         else
             return Tree!("",typeof(this),R,op,R,typeof(this))(this,ohs,ohs,this);
     }
+}
+
+private auto calc(R)(R value)
+{
+    return value;
 }

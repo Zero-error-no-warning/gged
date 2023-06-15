@@ -116,7 +116,7 @@ private struct IndexLoop(GGED)
     return result;
 }
 
-alias Gged(T,ulong Rank, bool isOffsetIndex = false) = GgedStruct!(T*,Rank,isOffsetIndex);
+alias Gged(T,ulong Rank, bool isOffsetIndex = false,SliceKind kind = SliceKind.contiguous) = GgedStruct!(T*,Rank,isOffsetIndex,kind);
 
 struct GgedStruct(T,ulong RANK, bool isOffsetIndex = false,SliceKind kind = SliceKind.contiguous)
 {
