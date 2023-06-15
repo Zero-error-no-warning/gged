@@ -106,9 +106,9 @@ private struct IndexLoop(GGED)
     return gged;
 }
 
-@nogc auto sum(T,ulong N,bool offsetflag,SliceKind kind)(GgedStruct!(T,N,offsetflag,kind) g)
+ auto sum(T,ulong N,bool offsetflag,SliceKind kind)(GgedStruct!(T,N,offsetflag,kind) g)
 {
-    auto result = 0;
+    auto result = 0.;
     foreach(ijk;g.index)
     {
         result += g[ijk];
@@ -302,8 +302,8 @@ struct GgedStruct(T,ulong RANK, bool isOffsetIndex = false,SliceKind kind = Slic
 
     auto opBinary(string op,GGED)(GGED rhs) 
     {
-        static if(is(GGED==GgedStruct!(T2,RANK2,isOffsetIndex2,kind2),T2,bool isOffsetIndex2,SliceKind kind2))
-            return _slice.opBinary!(op,T2,RANK2,kind2)(rhs._slice).gged.setOffset(offsets);
+        static if(is(GGED==GgedStruct!(T2,Rank,isOffsetIndex2,kind2),T2,bool isOffsetIndex2,SliceKind kind2))
+            return _slice.opBinary!(op,T2,Rank,kind2)(rhs._slice).gged.setOffset(offsets);
         else
             return _slice.opBinary!(op,GGED)(rhs).gged.setOffset(offsets);
     }
